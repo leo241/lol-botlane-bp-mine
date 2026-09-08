@@ -1,0 +1,620 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+app.py - LoL 下路 BP 助手 API 服务
+
+本地开发启动:
+  python3 app.py
+
+主要接口:
+  GET  /api/health
+  GET  /api/champions
+  POST /api/recommend
+  GET  /api/counter/<champion>
+"""
+
+import json
+import os
+
+from flask import Flask, jsonify, render_template, request
+
+try:
+    from pypinyin import Style, lazy_pinyin
+except ImportError:
+    Style = None
+    lazy_pinyin = None
+
+from bp_engine import (
+    VALID_KEYS,
+    extract_stat,
+    find_counter_picks,
+    new_bp_state,
+    run_recommend,
+)
+from champion_aliases import CHAMPION_ALIASES
+from my_lists import LIST_FILES, LIST_LABELS, get_lists, update_list
+from scraper.chinese_getchampion.hero_id_mapping import HERO_ID_MAPPING
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "data", "botlane_dataset.json")
+CN_NAMES_PATH = os.path.join(BASE_DIR, "scraper", "chinese_getchampion", "英雄名字.txt")
+
+app = Flask(__name__)
+DB = None
+CHAMPION_META = None
+
+BP_SLOT_LANES = {
+    "ally_ad": "bottom",
+    "enemy_ad": "bottom",
+    "ally_sup": "support",
+    "enemy_sup": "support",
+}
+
+BP_SLOT_LABELS = {
+    "ally_ad": "己方 ADC",
+    "enemy_ad": "敌方 ADC",
+    "ally_sup": "己方辅助",
+    "enemy_sup": "敌方辅助",
+}
+
+
+def has_chinese(text):
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
+
+
+def token_value(value, token_type, label=None):
+    value = str(value).strip().lower()
+    if not value:
+        return None
+    return {
+        "value": value,
+        "compact": "".join(value.split()),
+        "type": token_type,
+        "label": label or value,
+    }
+
+
+def add_token(tokens, seen, value, token_type, label=None):
+    token = token_value(value, token_type, label)
+    if not token:
+        return
+    key = (token["value"], token["type"])
+    if key in seen:
+        return
+    seen.add(key)
+    tokens.append(token)
+
+
+def pinyin_tokens(text):
+    if not lazy_pinyin or not Style or not has_chinese(text):
+        return []
+    syllables = [item for item in lazy_pinyin(text, errors="ignore") if item]
+    initials = [
+        item for item in lazy_pinyin(text, style=Style.FIRST_LETTER, errors="ignore") if item
+    ]
+    if not syllables:
+        return []
+    values = [
+        ("".join(syllables), "pinyin", text),
+        (" ".join(syllables), "pinyin", text),
+    ]
+    if initials:
+        values.append(("".join(initials), "initials", text))
+    return values
+
+
+def build_search_tokens(cn_name, key, champion_id, aliases):
+    tokens = []
+    seen = set()
+    add_token(tokens, seen, cn_name, "cn_name", cn_name)
+    add_token(tokens, seen, key, "id", key)
+    add_token(tokens, seen, key.title(), "english", key.title())
+    add_token(tokens, seen, champion_id, "champion_id", str(champion_id))
+    for alias in aliases:
+        add_token(tokens, seen, alias, "alias", alias)
+    for source in [cn_name, *aliases]:
+        for value, token_type, label in pinyin_tokens(source):
+            add_token(tokens, seen, value, token_type, label)
+    return tokens
+
+
+def has_chinese(text):
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
+
+
+def token_value(value, token_type, label=None):
+    value = str(value).strip().lower()
+    if not value:
+        return None
+    return {
+        "value": value,
+        "compact": "".join(value.split()),
+        "type": token_type,
+        "label": label or value,
+    }
+
+
+def add_token(tokens, seen, value, token_type, label=None):
+    token = token_value(value, token_type, label)
+    if not token:
+        return
+    key = (token["value"], token["type"])
+    if key in seen:
+        return
+    seen.add(key)
+    tokens.append(token)
+
+
+def pinyin_tokens(text):
+    if not lazy_pinyin or not Style or not has_chinese(text):
+        return []
+    syllables = [item for item in lazy_pinyin(text, errors="ignore") if item]
+    initials = [
+        item for item in lazy_pinyin(text, style=Style.FIRST_LETTER, errors="ignore") if item
+    ]
+    if not syllables:
+        return []
+    values = [
+        ("".join(syllables), "pinyin", text),
+        (" ".join(syllables), "pinyin", text),
+    ]
+    if initials:
+        values.append(("".join(initials), "initials", text))
+    return values
+
+
+def build_search_tokens(cn_name, key, champion_id, aliases):
+    tokens = []
+    seen = set()
+    add_token(tokens, seen, cn_name, "cn_name", cn_name)
+    add_token(tokens, seen, key, "id", key)
+    add_token(tokens, seen, key.title(), "english", key.title())
+    add_token(tokens, seen, champion_id, "champion_id", str(champion_id))
+    for alias in aliases:
+        add_token(tokens, seen, alias, "alias", alias)
+    for source in [cn_name, *aliases]:
+        for value, token_type, label in pinyin_tokens(source):
+            add_token(tokens, seen, value, token_type, label)
+    return tokens
+
+
+def load_db():
+    if not os.path.exists(DB_PATH):
+        raise FileNotFoundError(
+            "找不到 data/botlane_dataset.json，请先运行 python3 pre_fetch.py"
+        )
+    with open(DB_PATH, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def get_db():
+    """按需加载数据库；数据文件被 update_data.py 更新后自动重载（不用重启服务）。"""
+    global DB
+    try:
+        mtime = os.path.getmtime(DB_PATH)
+    except OSError:
+        mtime = None
+    if DB is None or (mtime is not None and mtime != get_db.last_mtime):
+        DB = load_db()
+        get_db.last_mtime = mtime
+    return DB
+
+get_db.last_mtime = None
+
+
+def load_champion_meta():
+    cn_names = []
+    if os.path.exists(CN_NAMES_PATH):
+        with open(CN_NAMES_PATH, "r", encoding="utf-8") as file:
+            cn_names = [line.strip() for line in file if line.strip()]
+
+    meta = {}
+    for (key, champion_id), cn_name in zip(HERO_ID_MAPPING.items(), cn_names):
+        aliases = CHAMPION_ALIASES.get(key, [])
+        search_tokens = build_search_tokens(cn_name, key, champion_id, aliases)
+        search_text = " ".join(token["value"] for token in search_tokens).lower()
+        meta[key] = {
+            "id": key,
+            "name": key.title(),
+            "cn_name": cn_name,
+            "aliases": aliases,
+            "champion_id": champion_id,
+            "avatar": f"/static/avatars/{champion_id}.png",
+            "search_tokens": search_tokens,
+            "search_text": search_text,
+        }
+    return meta
+
+
+def get_champion_meta():
+    global CHAMPION_META
+    if CHAMPION_META is None:
+        CHAMPION_META = load_champion_meta()
+    return CHAMPION_META
+
+
+def enrich_champion(champion_id, fallback_tier=None):
+    meta = get_champion_meta().get(champion_id, {})
+    return {
+        "id": champion_id,
+        "name": meta.get("name", champion_id.title()),
+        "cn_name": meta.get("cn_name", champion_id.title()),
+        "aliases": meta.get("aliases", []),
+        "champion_id": meta.get("champion_id"),
+        "tier": fallback_tier,
+        "avatar": meta.get("avatar", f"/static/avatars/{champion_id}.png"),
+        "search_tokens": meta.get("search_tokens", []),
+        "search_text": meta.get("search_text", champion_id),
+    }
+
+
+def enrich_recommendation_rows(rows):
+    for row in rows:
+        meta = enrich_champion(row["name"], row.get("tier"))
+        row["display_name"] = meta["cn_name"]
+        row["english_name"] = meta["name"]
+        row["champion_id"] = meta["champion_id"]
+        row["avatar"] = meta["avatar"]
+    return rows
+
+
+def build_bp_display(bp_state):
+    labels = {
+        "ally_ad": "己方 ADC",
+        "ally_sup": "己方辅助",
+        "enemy_ad": "敌方 ADC",
+        "enemy_sup": "敌方辅助",
+    }
+    display = {}
+    for key, value in bp_state.items():
+        champion = enrich_champion(value) if value else None
+        display[key] = {
+            "label": labels[key],
+            "id": value,
+            "display_name": champion["cn_name"] if champion else "未知",
+            "avatar": champion["avatar"] if champion else None,
+        }
+    return display
+
+
+def build_result_summary(results):
+    confidence_counts = {"high": 0, "medium": 0, "low": 0, "very_low": 0}
+    for row in results:
+        level = row.get("confidence_level")
+        if level in confidence_counts:
+            confidence_counts[level] += 1
+    return {
+        "total": len(results),
+        "confidence_counts": confidence_counts,
+        "complete_data_count": confidence_counts["high"],
+    }
+
+
+def build_score_rows(score_map, db, lane=None, top_n=20):
+    rows = []
+    for champion_id, raw_value in score_map.items():
+        tier = None
+        if lane:
+            tier = db["tiers"].get(lane, {}).get(champion_id)
+        if tier == "?":
+            continue
+        stat = extract_stat(raw_value, legacy_games=300)
+        row = {
+            "name": champion_id,
+            "tier": tier,
+            "win_rate": round(stat["winrate"] * 100, 2) if stat["winrate"] else 0,
+            "games": int(stat["games"]),
+        }
+        rows.append(row)
+    rows.sort(key=lambda item: item["win_rate"], reverse=True)
+    return enrich_recommendation_rows(rows[:top_n])
+
+
+def api_error(message, status_code=400, **extra):
+    payload = {"ok": False, "error": message}
+    payload.update(extra)
+    return jsonify(payload), status_code
+
+
+def normalize_top_n(value, default=10, minimum=1, maximum=50):
+    if value is None:
+        return default
+    if str(value).strip().lower() == "all":
+        return None
+    try:
+        top_n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, top_n))
+
+
+def build_mylists_payload():
+    meta = get_champion_meta()
+    lists = get_lists()
+    payload = {"ok": True, "lists": {}}
+    for key in LIST_FILES:
+        entry = lists[key]
+        champions = []
+        for champion_id in entry["ids"]:
+            info = meta.get(champion_id, {})
+            champions.append(
+                {
+                    "id": champion_id,
+                    "cn_name": info.get("cn_name") or champion_id.title(),
+                    "name": info.get("name") or champion_id.title(),
+                    "avatar": info.get("avatar"),
+                }
+            )
+        payload["lists"][key] = {
+            "label": LIST_LABELS[key],
+            "file": entry["file"],
+            "champions": champions,
+            "unknown": entry["unknown"],
+        }
+    return payload
+
+
+def apply_my_lists(role, result, top_n):
+    """按角色应用个人名单：不推荐的英雄剔除且不占名额，常用英雄打标"""
+    lists = get_lists()
+    if role == "adc":
+        block_key, fav_key = "adc_block", "adc_fav"
+    else:
+        block_key, fav_key = "support_block", "support_fav"
+    blocked_ids = set(lists[block_key]["ids"])
+    favorite_ids = set(lists[fav_key]["ids"])
+
+    all_rows = [row for row in result["results"] if row["name"] not in blocked_ids]
+    for row in all_rows:
+        if row["name"] in favorite_ids:
+            row["is_favorite"] = True
+
+    result["results"] = all_rows if top_n is None else all_rows[:top_n]
+    result["precise_results"] = sorted(
+        all_rows,
+        key=lambda item: item.get("precision_score", item["final_rating"]),
+        reverse=True,
+    )[:7]
+    result["my_lists"] = {
+        "blocked": sorted(blocked_ids),
+        "favorites": sorted(favorite_ids),
+    }
+    return result
+
+
+def validate_bp_state(db, bp_state):
+    invalid_fields = []
+    for key, champion in bp_state.items():
+        if not champion:
+            continue
+        lane = BP_SLOT_LANES[key]
+        tier = db.get("tiers", {}).get(lane, {}).get(champion)
+        if tier and tier != "?":
+            continue
+        invalid_fields.append(
+            {
+                "field": key,
+                "label": BP_SLOT_LABELS[key],
+                "value": champion,
+                "expected_lane": lane,
+            }
+        )
+    return invalid_fields
+
+
+def build_champion_list(db, lane):
+    champions = []
+    for name, tier in db["tiers"].get(lane, {}).items():
+        if tier == "?":
+            continue
+        champion = enrich_champion(name, tier)
+        stat = extract_stat(db.get("hero_stats", {}).get(lane, {}).get(name), legacy_games=0)
+        champion["win_rate"] = round(stat["winrate"] * 100, 2) if stat["winrate"] else 0
+        champion["games"] = int(stat["games"])
+        champions.append(champion)
+    return champions
+
+
+@app.get("/api/mylists")
+def mylists():
+    return jsonify(build_mylists_payload())
+
+
+@app.post("/api/mylists")
+def mylists_update():
+    payload = request.get_json(silent=True) or {}
+    list_key = str(payload.get("list", "")).strip()
+    action = str(payload.get("action", "")).strip().lower()
+    champion = str(payload.get("champion", "")).strip()
+
+    if list_key not in LIST_FILES:
+        return api_error("list 必须是 " + "、".join(LIST_FILES))
+    if action not in ("add", "remove"):
+        return api_error("action 必须是 add 或 remove")
+    if not champion:
+        return api_error("champion 不能为空")
+
+    try:
+        update_list(list_key, champion, add=(action == "add"))
+    except ValueError as exc:
+        return api_error(str(exc))
+    return jsonify(build_mylists_payload())
+
+
+@app.get("/api/health")
+def health():
+    db = get_db()
+    return jsonify(
+        {
+            "ok": True,
+            "service": "lol-botlane-bp",
+            "data_meta": db.get("meta", {}),
+        }
+    )
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
+
+
+@app.get("/api/champions")
+def champions():
+    db = get_db()
+    return jsonify(
+        {
+            "ok": True,
+            "data_meta": db.get("meta", {}),
+            "bottom": build_champion_list(db, "bottom"),
+            "support": build_champion_list(db, "support"),
+        }
+    )
+
+
+@app.post("/api/recommend")
+def recommend():
+    db = get_db()
+    payload = request.get_json(silent=True) or {}
+
+    role = str(payload.get("role", "")).strip().lower()
+    if role not in ("support", "adc"):
+        return api_error("role 必须是 support 或 adc")
+
+    raw_bp_state = payload.get("bp_state") or {}
+    if not isinstance(raw_bp_state, dict):
+        return api_error("bp_state 必须是对象")
+
+    bp_state = new_bp_state()
+    for key in VALID_KEYS:
+        value = raw_bp_state.get(key)
+        bp_state[key] = str(value).strip().lower() if value else None
+
+    invalid_fields = validate_bp_state(db, bp_state)
+    if invalid_fields:
+        labels = [
+            f"{item['label']}={item['value']}"
+            for item in invalid_fields
+        ]
+        return api_error(
+            "BP 槽位包含无效英雄或位置不匹配: " + "，".join(labels),
+            invalid_fields=invalid_fields,
+        )
+
+    top_n = normalize_top_n(payload.get("top_n"))
+    # 先取完整排行，再用个人名单过滤，保证不推荐的英雄不占用推荐名额
+    result = run_recommend(role, bp_state, db, top_n=None)
+    apply_my_lists(role, result, top_n)
+    enrich_recommendation_rows(result["results"])
+    enrich_recommendation_rows(result.get("precise_results", []))
+    result["bp_display"] = build_bp_display(result["bp_state"])
+    result["summary"] = build_result_summary(result["results"])
+    result["ok"] = True
+    return jsonify(result)
+
+
+@app.get("/api/counter/<champion>")
+def counter(champion):
+    db = get_db()
+    top_n = normalize_top_n(request.args.get("top_n"), default=5)
+    champion = champion.strip().lower()
+    if not champion:
+        return api_error("champion 不能为空")
+
+    return jsonify(
+        {
+            "ok": True,
+            "champion": champion,
+            "data_meta": db.get("meta", {}),
+            "adc": enrich_recommendation_rows(
+                find_counter_picks(champion, "adc", db, top_n=top_n)
+            ),
+            "support": enrich_recommendation_rows(
+                find_counter_picks(champion, "support", db, top_n=top_n)
+            ),
+        }
+    )
+
+
+@app.get("/api/synergy/<champion>")
+def synergy(champion):
+    db = get_db()
+    top_n = normalize_top_n(request.args.get("top_n"), default=20)
+    champion = champion.strip().lower()
+    if not champion:
+        return api_error("champion 不能为空")
+
+    rows = []
+    for partner, raw_value in db["synergy"].get(champion, {}).items():
+        lane = "bottom" if partner in db["tiers"].get("bottom", {}) else "support"
+        tier = db["tiers"].get(lane, {}).get(partner)
+        if tier == "?":
+            continue
+        stat = extract_stat(raw_value, legacy_games=300)
+        rows.append(
+            {
+                "name": partner,
+                "tier": tier,
+                "win_rate": round(stat["winrate"] * 100, 2) if stat["winrate"] else 0,
+                "games": int(stat["games"]),
+            }
+        )
+    rows.sort(key=lambda item: item["win_rate"], reverse=True)
+
+    return jsonify(
+        {
+            "ok": True,
+            "champion": enrich_champion(champion),
+            "data_meta": db.get("meta", {}),
+            "results": enrich_recommendation_rows(rows[:top_n]),
+        }
+    )
+
+
+@app.get("/api/matchup/<champion>")
+def matchup(champion):
+    db = get_db()
+    top_n = normalize_top_n(request.args.get("top_n"), default=20)
+    champion = champion.strip().lower()
+    if not champion:
+        return api_error("champion 不能为空")
+
+    data = db["counter"].get(champion, {})
+    return jsonify(
+        {
+            "ok": True,
+            "champion": enrich_champion(champion),
+            "data_meta": db.get("meta", {}),
+            "vs_adc": build_score_rows(
+                data.get("vs_adc", {}), db, lane="bottom", top_n=top_n
+            ),
+            "vs_support": build_score_rows(
+                data.get("vs_sup", {}), db, lane="support", top_n=top_n
+            ),
+        }
+    )
+
+
+@app.get("/api/tier/<lane>")
+def tier(lane):
+    db = get_db()
+    lane = lane.strip().lower()
+    if lane == "adc":
+        lane = "bottom"
+    if lane not in ("bottom", "support"):
+        return api_error("lane 必须是 bottom/adc 或 support")
+
+    return jsonify(
+        {
+            "ok": True,
+            "lane": lane,
+            "data_meta": db.get("meta", {}),
+            "results": build_champion_list(db, lane),
+        }
+    )
+
+
+if __name__ == "__main__":
+    get_db()
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    app.run(host=host, port=port, debug=False, use_reloader=False)
