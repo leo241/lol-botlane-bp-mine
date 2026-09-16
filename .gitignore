@@ -18,3 +18,10 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# LCU 测试用的临时文件（需要时自动生成）
+tools/.mock_lockfile
+tools/.mock_cert.pem
+tools/.mock_key.pem
+tools/_check.js
+lcu_demo.png

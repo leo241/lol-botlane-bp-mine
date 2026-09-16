@@ -11,10 +11,17 @@ app.py - LoL 下路 BP 助手 API 服务
   GET  /api/champions
   POST /api/recommend
   GET  /api/counter/<champion>
+  GET  /api/lcu/state        # 客户端实时状态（只读，供自动填充使用）
+  POST /api/lcu/config       # 开关自动识别
 """
 
 import json
 import os
+import re
+import subprocess
+import sys
+import threading
+import time
 
 from flask import Flask, jsonify, render_template, request
 
@@ -24,6 +31,7 @@ except ImportError:
     Style = None
     lazy_pinyin = None
 
+import lcu
 from bp_engine import (
     VALID_KEYS,
     extract_stat,
@@ -42,6 +50,25 @@ CN_NAMES_PATH = os.path.join(BASE_DIR, "scraper", "chinese_getchampion", "英雄
 app = Flask(__name__)
 DB = None
 CHAMPION_META = None
+
+# ── LCU 监听（只读） ─────────────────────────────────────────────
+# 后台线程轮询英雄选择状态，只用于自动填充输入框。
+# 只发 GET 请求：不 pick、不 ban、不点击、不修改任何游戏状态。
+# 想彻底关掉：设置环境变量 LCU_DISABLED=1，或页面上点开关。
+LCU_WATCHER = lcu.WATCHER
+_lcu_start_lock = threading.Lock()
+_lcu_started = False
+
+
+def ensure_lcu_started():
+    """惰性启动后台监听线程（首次请求或启动时触发）。"""
+    global _lcu_started
+    if _lcu_started or os.environ.get("LCU_DISABLED") == "1":
+        return
+    with _lcu_start_lock:
+        if not _lcu_started:
+            LCU_WATCHER.start()
+            _lcu_started = True
 
 BP_SLOT_LANES = {
     "ally_ad": "bottom",
@@ -441,6 +468,76 @@ def mylists_update():
     return jsonify(build_mylists_payload())
 
 
+@app.get("/api/lcu/state")
+def lcu_state():
+    """客户端实时状态 + 自动填充数据（只读）。
+
+    返回的英雄对象格式和 /api/champions 一致，前端可以直接填进输入框。
+    """
+    ensure_lcu_started()
+    snapshot = LCU_WATCHER.snapshot()
+    session = snapshot.get("session") or {}
+
+    def champion_of(key):
+        if not key:
+            return None
+        return enrich_champion(key)
+
+    ally = {
+        "adc": champion_of((session.get("ally") or {}).get("adc")),
+        "support": champion_of((session.get("ally") or {}).get("support")),
+    }
+
+    enemy_session = session.get("enemy") or {}
+    enemy = {}
+    for slot in ("adc", "support"):
+        item = enemy_session.get(slot) or {}
+        enemy[slot] = {
+            "champion": champion_of(item.get("key")),
+            "confidence": item.get("confidence"),
+            "inferred": True,
+        }
+
+    in_champ_select = bool(snapshot.get("in_champ_select"))
+    return jsonify({
+        "ok": True,
+        "enabled": snapshot.get("enabled", False),
+        "running": snapshot.get("running", False),
+        "connected": bool(snapshot.get("connected")),
+        "source": snapshot.get("source"),
+        "error": snapshot.get("error"),
+        "in_champ_select": in_champ_select,
+        "revision": snapshot.get("revision", 0),
+        "last_poll": snapshot.get("last_poll"),
+        "queue": {
+            "id": session.get("queue_id"),
+            "name": session.get("queue_name"),
+        } if in_champ_select else None,
+        "phase": session.get("phase"),
+        "timer": session.get("timer"),
+        "my_position": session.get("my_position"),
+        "role_hint": session.get("my_slot"),
+        "ally": ally if in_champ_select else {"adc": None, "support": None},
+        "enemy": enemy if in_champ_select else {
+            "adc": {"champion": None, "confidence": None},
+            "support": {"champion": None, "confidence": None},
+        },
+        "bans": session.get("bans"),
+        "enemy_pick_count": session.get("enemy_pick_count", 0),
+    })
+
+
+@app.post("/api/lcu/config")
+def lcu_config():
+    """开关自动识别（关掉后完全不轮询客户端）。"""
+    payload = request.get_json(silent=True) or {}
+    if "enabled" in payload:
+        LCU_WATCHER.set_enabled(bool(payload["enabled"]))
+    if payload.get("enabled"):
+        ensure_lcu_started()
+    return jsonify({"ok": True, "enabled": LCU_WATCHER.is_enabled()})
+
+
 @app.get("/api/health")
 def health():
     db = get_db()
@@ -451,6 +548,197 @@ def health():
             "data_meta": db.get("meta", {}),
         }
     )
+
+
+# ────────────────────── 数据更新（网页内触发） ──────────────────────
+#
+# 跑的是跟 update_bp_data.bat 同一个 update_data.py，只是改成后台线程执行，
+# 并把子进程的输出实时抓出来给前端显示进度。
+
+UPDATE_LOCK = threading.Lock()
+
+# pre_fetch.py 的 progress() 输出形如：
+#   [████████░░░░░░] 16% (8/50) jinx/bottom
+PROGRESS_RE = re.compile(r"\[[^\]]*\]\s*(\d+)%\s*\((\d+)/(\d+)\)\s*(.*)")
+# 阶段标记 [1/3] [2/3] [3/3] → 各占总进度的区间
+STAGE_SPAN = {1: (5, 40), 2: (40, 85), 3: (85, 94)}
+
+UPDATE_STATE = {
+    "running": False,
+    "done": False,
+    "ok": None,
+    "phase": "idle",   # idle/backup/fetch/validate/test/done/failed
+    "label": "",
+    "percent": 0,
+    "logs": [],
+    "error": None,
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+def _log(line):
+    line = line.rstrip()
+    if not line:
+        return
+    with UPDATE_LOCK:
+        UPDATE_STATE["logs"].append(line)
+        UPDATE_STATE["logs"] = UPDATE_STATE["logs"][-40:]
+        UPDATE_STATE["label"] = line
+
+
+def _mark(**changes):
+    with UPDATE_LOCK:
+        UPDATE_STATE.update(changes)
+
+
+def _handle_output(line):
+    """解析一行输出，更新阶段和百分比。"""
+    stage = re.search(r"\[(\d)/3\]", line)
+    if stage:
+        num = int(stage.group(1))
+        start, _end = STAGE_SPAN.get(num, (5, 40))
+        names = {1: "梯队数据", 2: "协同与克制矩阵", 3: "写入数据文件"}
+        _mark(phase="fetch", percent=start, label=f"[{num}/3] {names.get(num, '')}...")
+
+    match = PROGRESS_RE.search(line)
+    if match:
+        pct = int(match.group(1))
+        # 找出当前处于哪个阶段，把 pct 映射到该阶段的区间里
+        with UPDATE_LOCK:
+            label = UPDATE_STATE.get("label", "")
+        stage = re.search(r"\[(\d)/3\]", label) or re.search(r"\[(\d)/3\]", "")
+        cur = int(stage.group(1)) if stage else 2
+        start, end = STAGE_SPAN.get(cur, (40, 85))
+        _mark(percent=start + (end - start) * pct / 100.0)
+        return
+
+    if "已备份旧数据" in line:
+        _mark(phase="backup", percent=4)
+    elif "数据校验通过" in line:
+        _mark(phase="validate", percent=95)
+    elif "test_api" in line:
+        _mark(phase="test", percent=97)
+    elif "数据更新完成" in line:
+        _mark(phase="done", percent=100)
+
+
+# 日志里哪些行算"真正说明失败原因"的（traceback 的最后几行基本都命中）
+ERROR_HINTS = (
+    "Error", "Traceback", "Exception", "失败", "错误",
+    "refused", "timed out", "timeout", "denied",
+)
+
+
+def _extract_error(logs, code):
+    """从日志里挑出说明"为什么失败"的行，别只丢一个退出码给用户。
+
+    update_data.py 崩溃时 traceback 会打到 stderr，我们把它一起收进 logs 了，
+    所以扫一遍就能拿到真正的异常，而不是干巴巴的 "退出码 1"。
+    """
+    picks = [ln.strip() for ln in logs if any(h in ln for h in ERROR_HINTS)]
+    if picks:
+        return " ｜ ".join(picks[-3:])
+    return f"更新进程退出码 {code}（旧数据已自动恢复，详情看日志）"
+
+
+def _run_update(with_timeline=False):
+    """后台线程：跑 update_data.py，边跑边把输出喂给 UPDATE_STATE。"""
+    _mark(running=True, done=False, ok=None, error=None, phase="backup",
+          percent=2, logs=[], label="正在启动...",
+          started_at=time.strftime("%H:%M:%S"), finished_at=None)
+
+    args = [sys.executable, "-u", "update_data.py"]
+    if with_timeline:
+        args.append("--with-timeline")
+    # PYTHONUNBUFFERED= 让输出不缓冲，进度才能实时读到；
+    # PYTHONIOENCODING=utf-8 很关键：从 bat/cmd 启动时子进程继承 GBK 代码页，
+    # pre_fetch 标题里的 🚀 编不出来会直接 UnicodeEncodeError 崩掉（退出码 1）。
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+
+    try:
+        proc = subprocess.Popen(
+            args, cwd=BASE_DIR, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+    except Exception as exc:
+        _mark(running=False, done=True, ok=False, phase="failed",
+              error=f"无法启动更新进程：{exc}", finished_at=time.strftime("%H:%M:%S"))
+        return
+
+    buf = ""
+    try:
+        while True:
+            chunk = proc.stdout.read(256)
+            if not chunk:
+                break
+            for ch in chunk.decode("utf-8", errors="replace"):
+                if ch in ("\r", "\n"):
+                    if buf.strip():
+                        _log(buf)
+                        _handle_output(buf)
+                    buf = ""
+                else:
+                    buf += ch
+        if buf.strip():
+            _log(buf)
+            _handle_output(buf)
+        proc.wait()
+        code = proc.returncode
+    except Exception as exc:
+        _mark(running=False, done=True, ok=False, phase="failed",
+              error=f"更新过程异常：{exc}", finished_at=time.strftime("%H:%M:%S"))
+        return
+
+    if code == 0:
+        # 数据集换了，清掉依赖它的缓存，让下次请求重新加载
+        try:
+            lcu.invalidate_role_cache()
+        except Exception:
+            pass
+        try:
+            db = get_db()
+            update_time = (db.get("meta") or {}).get("update_time") or "-"
+        except Exception:
+            update_time = "-"
+        _mark(running=False, done=True, ok=True, phase="done", percent=100,
+              label=f"更新完成，数据时间 {update_time}",
+              finished_at=time.strftime("%H:%M:%S"))
+    else:
+        with UPDATE_LOCK:
+            logs = list(UPDATE_STATE["logs"])
+        _mark(running=False, done=True, ok=False, phase="failed",
+              error=_extract_error(logs, code),
+              finished_at=time.strftime("%H:%M:%S"))
+
+
+@app.post("/api/data/update")
+def data_update():
+    """启动一次数据更新。已在运行时不会重复启动。"""
+    payload = request.get_json(silent=True) or {}
+    with UPDATE_LOCK:
+        if UPDATE_STATE["running"]:
+            return jsonify({"ok": False, "started": False,
+                            "reason": "更新已在运行中"})
+    thread = threading.Thread(
+        target=_run_update,
+        kwargs={"with_timeline": bool(payload.get("with_timeline"))},
+        name="data-update", daemon=True,
+    )
+    thread.start()
+    return jsonify({"ok": True, "started": True})
+
+
+@app.get("/api/data/update/status")
+def data_update_status():
+    """查询更新进度（前端轮询这个）。"""
+    with UPDATE_LOCK:
+        snapshot = {
+            key: (list(value) if isinstance(value, list) else value)
+            for key, value in UPDATE_STATE.items()
+        }
+    snapshot["ok"] = True
+    return jsonify(snapshot)
 
 
 @app.get("/")
@@ -615,6 +903,7 @@ def tier(lane):
 
 if __name__ == "__main__":
     get_db()
+    ensure_lcu_started()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
     app.run(host=host, port=port, debug=False, use_reloader=False)

@@ -12,6 +12,16 @@ import scraper.lolalytics as la
 import scraper.lolalytics_timeline as timeline
 from scraper.champion_map import get_all
 
+# Windows 中文环境下，stdout 默认跟着控制台代码页走（cmd 是 GBK/cp936）。
+# 本脚本的标题和结束横幅里有 emoji（🚀 / ✅），GBK 编不出来，
+# 一 print 就抛 UnicodeEncodeError 直接崩掉，退出码 1 —— 从 bat 启动也一样会中招。
+# 这里强制 UTF-8，并且编码不了的字替换掉而不是抛异常。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass  # 老版本 Python 没有 reconfigure，那就只能靠调用方设 PYTHONIOENCODING
+
 DATA_DIR = "data"
 OUTPUT_FILE = os.path.join(DATA_DIR, "botlane_dataset.json")
 MAX_WORKERS = 5
@@ -386,7 +396,21 @@ def main():
     print(f"\n[3/3] 正在保存到 {OUTPUT_FILE} ...")
     with open(tmp_file, 'w', encoding='utf-8') as f:
         json.dump(dataset, f, ensure_ascii=False)
-    os.replace(tmp_file, OUTPUT_FILE)
+
+    # Windows 上，如果网页服务（Flask）正好在读旧的数据文件，os.replace 会
+    # 撞上文件占用直接失败。抓一轮数据要 100 多秒，为这点冲突整轮重跑太亏，
+    # 所以这里重试几次 —— 读一个 800KB 的 JSON 也就几十毫秒，等半秒足够。
+    REPLACE_RETRIES = 10
+    for attempt in range(REPLACE_RETRIES):
+        try:
+            os.replace(tmp_file, OUTPUT_FILE)
+            break
+        except PermissionError:
+            if attempt == REPLACE_RETRIES - 1:
+                raise
+            wait = 0.5 * (attempt + 1)
+            print(f"  数据文件被占用，{wait:.1f}s 后重试 ({attempt + 1}/{REPLACE_RETRIES - 1})...")
+            time.sleep(wait)
 
     # 统计数据覆盖率
     total_syn = sum(len(v) for v in synergy.values())

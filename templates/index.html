@@ -197,7 +197,7 @@
       width: auto;
       min-height: 0;
     }
-    .primary, .secondary, select {
+    .primary, .secondary, .danger, select {
       min-height: 38px;
       border-radius: 6px;
       font-size: 14px;
@@ -210,6 +210,22 @@
       color: white;
       font-weight: 700;
       cursor: pointer;
+    }
+    /* 清空是破坏性操作，用红色实心，跟蓝色的"重新推荐"明确区分开 */
+    .danger {
+      border: 1px solid #b3261e;
+      background: #b3261e;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .danger:hover {
+      background: #8f1d17;
+      border-color: #8f1d17;
+    }
+    .danger:active {
+      background: #7a1812;
+      border-color: #7a1812;
     }
     .secondary, select {
       border: 1px solid var(--line);
@@ -397,6 +413,80 @@
       font-size: 13px;
       line-height: 1.45;
     }
+    /* 数据更新时间那格：时间 + 更新按钮 + 进度条 */
+    .update-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;   /* 窗口窄时按钮换行，别把时间挤变形 */
+    }
+    .update-row strong {
+      margin-top: 4px;
+    }
+    .mini-btn {
+      flex: none;
+      min-height: 26px;
+      padding: 0 9px;
+      border-radius: 5px;
+      border: 1px solid var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .mini-btn:hover {
+      background: var(--accent);
+      color: white;
+    }
+    .mini-btn:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+    .mini-btn:disabled:hover {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .update-progress {
+      margin-top: 8px;
+    }
+    .update-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: #e6eaf1;
+      overflow: hidden;
+    }
+    .update-bar i {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: var(--accent);
+      transition: width 0.25s ease;
+    }
+    .update-bar.is-failed i {
+      background: var(--low);
+    }
+    .update-bar.is-done i {
+      background: var(--good);
+    }
+    .update-progress p {
+      margin: 5px 0 0;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+      max-height: 32px;
+      overflow: hidden;
+    }
+    /* 失败时把错误信息放开了显示，别只露出半行 */
+    .update-progress.is-failed p {
+      max-height: 96px;
+      overflow-y: auto;
+      color: var(--low);
+      word-break: break-word;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -453,6 +543,34 @@
     .confidence-medium { color: var(--mid); }
     .confidence-low { color: var(--low); }
     .confidence-very_low { color: var(--muted); }
+
+    /* 配合分 / 对位分：偏高、偏低、不高不低三档一眼分得清。
+       选择器必须带上父级，否则会被 .score-tile strong / .precise-score strong
+       自带的 color: var(--text) 盖掉（它们特异性更高）。 */
+    td.score-high,
+    .score-tile strong.score-high,
+    .precise-score strong.score-high {
+      color: var(--good);
+      font-weight: 800;
+    }
+    td.score-low,
+    .score-tile strong.score-low,
+    .precise-score strong.score-low {
+      color: var(--low);
+      font-weight: 800;
+    }
+    td.score-mid,
+    .score-tile strong.score-mid,
+    .precise-score strong.score-mid {
+      color: var(--muted);
+      font-weight: 400;
+    }
+    /* 没有这组对局数据（不等于"很差"）—— 灰掉，别让人误读成负分 */
+    td.score-none,
+    .score-tile strong.score-none,
+    .precise-score strong.score-none {
+      color: #b6bcc7;
+    }
     .help-tip {
       display: inline-flex;
       align-items: center;
@@ -878,6 +996,92 @@
       outline-offset: -2px;
       background: rgba(255, 184, 0, 0.10);
     }
+    /* ==== 客户端自动识别 ==== */
+    .lcu-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      font-size: 13px;
+    }
+    .lcu-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: #b6bdc9;
+    }
+    .lcu-bar.is-connected .lcu-dot { background: var(--good); }
+    .lcu-bar.is-live .lcu-dot {
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    .lcu-text { color: var(--text); font-weight: 600; }
+    .lcu-sub { color: var(--muted); }
+    .lcu-timer {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--accent);
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+    }
+    .lcu-spacer { flex: 1 1 auto; }
+    .lcu-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .lcu-switch input { margin: 0; cursor: pointer; }
+    .slot-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 18px;
+    }
+    .auto-tag {
+      font-size: 11px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .auto-tag.is-guess {
+      background: #fff4e0;
+      color: var(--mid);
+    }
+    .auto-tag.is-unsure {
+      background: #fdecec;
+      color: var(--low);
+    }
+    .auto-tag.is-manual {
+      background: #eceef2;
+      color: var(--muted);
+    }
+    /* 「待定」：敌方出了人但没把握认出谁是下路，先不填 */
+    .auto-tag.is-pending {
+      background: #f4f5f7;
+      color: #9aa1ab;
+      border: 1px dashed #c8ccd3;
+      font-weight: 600;
+    }
+    input.lcu-filled {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
   </style>
 </head>
 <body>
@@ -902,27 +1106,42 @@
       <div class="status" id="status">正在加载英雄列表...</div>
     </section>
 
+    <section class="lcu-bar" id="lcu_bar">
+      <span class="lcu-dot"></span>
+      <span class="lcu-text" id="lcu_text">正在检测游戏客户端…</span>
+      <span class="lcu-sub" id="lcu_sub"></span>
+      <span class="lcu-timer" id="lcu_timer" hidden></span>
+      <span class="lcu-spacer"></span>
+      <label class="lcu-switch" title="关闭后完全不再读取客户端，回到纯手动填写">
+        <input type="checkbox" id="lcu_auto" checked> 自动识别客户端
+      </label>
+    </section>
+
     <section class="bp-grid">
       <div class="slot">
         <label>己方 ADC
+          <span class="slot-head"><span></span><span class="auto-tag" id="tag_ally_ad" hidden></span></span>
           <input id="ally_ad" autocomplete="off" placeholder="未知">
           <div class="suggestions" id="ally_ad_suggestions"></div>
         </label>
       </div>
       <div class="slot">
         <label>己方辅助
+          <span class="slot-head"><span></span><span class="auto-tag" id="tag_ally_sup" hidden></span></span>
           <input id="ally_sup" autocomplete="off" placeholder="未知">
           <div class="suggestions" id="ally_sup_suggestions"></div>
         </label>
       </div>
       <div class="slot">
         <label>敌方 ADC
+          <span class="slot-head"><span></span><span class="auto-tag" id="tag_enemy_ad" hidden></span></span>
           <input id="enemy_ad" autocomplete="off" placeholder="未知">
           <div class="suggestions" id="enemy_ad_suggestions"></div>
         </label>
       </div>
       <div class="slot">
         <label>敌方辅助
+          <span class="slot-head"><span></span><span class="auto-tag" id="tag_enemy_sup" hidden></span></span>
           <input id="enemy_sup" autocomplete="off" placeholder="未知">
           <div class="suggestions" id="enemy_sup_suggestions"></div>
         </label>
@@ -934,7 +1153,7 @@
 
     <section class="actions">
       <button class="primary" id="recommend" type="button">重新推荐</button>
-      <button class="secondary" id="clear" type="button">清空</button>
+      <button class="danger" id="clear" type="button">清空</button>
       <label class="precise-toggle"><input id="precise_mode" type="checkbox"> 精确推荐</label>
       <button class="secondary" id="open_exclusions" type="button">英雄排除（0）</button>
       <select id="confidence_filter" aria-label="可信度筛选">
@@ -955,7 +1174,17 @@
       <div class="metric wide"><span>BP 状态</span><strong id="state">-</strong><p id="state_desc">-</p></div>
       <div class="metric"><span>返回推荐</span><strong id="total">-</strong></div>
       <div class="metric"><span>高可信</span><strong id="high_count">-</strong></div>
-      <div class="metric"><span>数据更新时间</span><strong id="update_time">-</strong></div>
+      <div class="metric">
+        <span>数据更新时间</span>
+        <div class="update-row">
+          <strong id="update_time">-</strong>
+          <button class="mini-btn" id="update_data_btn" type="button" title="重新从 Lolalytics 抓取数据（同 update_bp_data.bat）">更新数据</button>
+        </div>
+        <div class="update-progress" id="update_progress" hidden>
+          <div class="update-bar"><i id="update_bar"></i></div>
+          <p id="update_phase">-</p>
+        </div>
+      </div>
     </section>
 
     <section class="precise-panel" id="precise_panel">
@@ -1160,13 +1389,281 @@
     const synergySort = document.querySelector("#synergy_sort");
     const counterInput = document.querySelector("#counter_champion");
     const tierLane = document.querySelector("#tier_lane");
+    const updateTimeEl = document.querySelector("#update_time");
+    const updateBtn = document.querySelector("#update_data_btn");
+    const updateProgress = document.querySelector("#update_progress");
+    const updateBar = document.querySelector("#update_bar");
+    const updatePhase = document.querySelector("#update_phase");
     const metrics = {
       state: document.querySelector("#state"),
       stateDesc: document.querySelector("#state_desc"),
       total: document.querySelector("#total"),
       high: document.querySelector("#high_count"),
-      update: document.querySelector("#update_time"),
+      update: updateTimeEl,
     };
+
+    // ── 客户端自动识别 ──
+    const lcuBar = document.querySelector("#lcu_bar");
+    const lcuText = document.querySelector("#lcu_text");
+    const lcuSub = document.querySelector("#lcu_sub");
+    const lcuTimer = document.querySelector("#lcu_timer");
+    const lcuAuto = document.querySelector("#lcu_auto");
+    const lcuTags = {
+      ally_ad: document.querySelector("#tag_ally_ad"),
+      ally_sup: document.querySelector("#tag_ally_sup"),
+      enemy_ad: document.querySelector("#tag_enemy_ad"),
+      enemy_sup: document.querySelector("#tag_enemy_sup"),
+    };
+    const lcuState = {
+      timer: null,
+      lastPush: {},      // 上次由客户端写进输入框的值
+      desired: {},       // 上次客户端给出的目标值（用来判断“客户端有没有新消息”）
+      manual: new Set(), // 已被用户手动接管的输入框
+      lastRoleHint: null,
+      lastInSelect: false,
+      wasInSelect: false,
+      roleOverride: false, // 用户手动切过分路，本轮选人不再自动跟着客户端切
+      fails: 0,
+      busy: false,
+    };
+
+    // ── 客户端自动识别：轮询 / 状态栏 / 自动填入 ──
+    const LCU_POLL_MS = 2000;
+    const LCU_SLOT_IDS = ["ally_ad", "ally_sup", "enemy_ad", "enemy_sup"];
+    const LCU_PHASE_LABEL = {
+      PLANNING: "预选",
+      BAN_PICK: "禁选",
+      FINALIZATION: "最终确认",
+      GAME_STARTING: "即将开始",
+    };
+    const LCU_TAG_TEXT = {high: "自动", medium: "推测", low: "存疑", pending: "待定", manual: "手动"};
+    const LCU_TAG_CLASS = {high: "", medium: "is-guess", low: "is-unsure", pending: "is-pending", manual: "is-manual"};
+    let lcuPollTimer = null;
+
+    function setAutoTag(id, level) {
+      const tag = lcuTags[id];
+      if (!tag) return;
+      if (!level) {
+        tag.hidden = true;
+        tag.textContent = "";
+        tag.className = "auto-tag";
+        return;
+      }
+      tag.hidden = false;
+      tag.textContent = LCU_TAG_TEXT[level] || "自动";
+      tag.className = "auto-tag" + (LCU_TAG_CLASS[level] ? ` ${LCU_TAG_CLASS[level]}` : "");
+    }
+
+    function setLcuBar(state, text, sub, timerText) {
+      const linked = state === "connected" || state === "live";
+      lcuBar.classList.toggle("is-connected", linked);
+      lcuBar.classList.toggle("is-live", state === "live");
+      lcuText.textContent = text;
+      lcuSub.textContent = sub || "";
+      if (timerText) {
+        lcuTimer.hidden = false;
+        lcuTimer.textContent = timerText;
+      } else {
+        lcuTimer.hidden = true;
+        lcuTimer.textContent = "";
+      }
+    }
+
+    function lcuSlotInfo(id, data) {
+      if (id === "ally_ad") return {champion: (data.ally || {}).adc || null, level: "high"};
+      if (id === "ally_sup") return {champion: (data.ally || {}).support || null, level: "high"};
+      const slot = id === "enemy_ad" ? "adc" : "support";
+      const item = (data.enemy || {})[slot] || {};
+      // 敌方已经出了人、但没把握认出谁是下路 → 标「待定」；
+      // 一个人都还没出 → 什么都不标（那会儿本来就该是空的）
+      const pending = !item.champion && (data.enemy_pick_count || 0) > 0;
+      return {champion: item.champion || null, level: item.confidence || "low", pending};
+    }
+
+    // 清空由客户端写入的输入框。onlyOwned=true 时保留用户自己填的内容。
+    function clearLcuFills(onlyOwned = true) {
+      LCU_SLOT_IDS.forEach((id) => {
+        const input = inputs[id];
+        if (input) {
+          const owned = input.value === (lcuState.lastPush[id] || "");
+          if (!onlyOwned || owned) {
+            input.value = "";
+          }
+          input.classList.remove("lcu-filled");
+        }
+        setAutoTag(id, null);
+      });
+      lcuState.lastPush = {};
+      lcuState.desired = {};
+      lcuState.manual.clear();
+    }
+
+    // 关闭自动识别时用：保留输入框里已有的值（用户还能接着用/改），只是不再接管。
+    function detachLcuFills() {
+      LCU_SLOT_IDS.forEach((id) => {
+        const input = inputs[id];
+        if (input) input.classList.remove("lcu-filled");
+        setAutoTag(id, null);
+      });
+      lcuState.lastPush = {};
+      lcuState.desired = {};
+      lcuState.manual.clear();
+    }
+
+    // 把客户端数据写进 4 个输入框。返回是否有实际改动（用来决定要不要重算推荐）。
+    function applyLcuFills(data) {
+      let changed = false;
+      LCU_SLOT_IDS.forEach((id) => {
+        const input = inputs[id];
+        if (!input) return;
+        const {champion, level, pending} = lcuSlotInfo(id, data);
+        const desired = champion ? inputValue(champion) : "";
+        const hasPrev = Object.prototype.hasOwnProperty.call(lcuState.desired, id);
+        const desiredChanged = !hasPrev || lcuState.desired[id] !== desired;
+        lcuState.desired[id] = desired;
+
+        const last = lcuState.lastPush[id] || "";
+        const ours = input.value === last; // 当前值是我们写的（或双方都是空）
+
+        // 客户端有新信息 → 重新接管；用户之前的接管作废
+        if (desiredChanged) lcuState.manual.delete(id);
+
+        // 用户在编辑这个框，先别动
+        if (document.activeElement === input) return;
+
+        // 客户端现在没数据，但框里有用户手动填的内容 → 保留
+        if (desiredChanged && !desired && !ours && input.value.trim()) {
+          lcuState.manual.add(id);
+          setAutoTag(id, "manual");
+          return;
+        }
+
+        if (lcuState.manual.has(id)) {
+          setAutoTag(id, input.value.trim() ? "manual" : null);
+          return;
+        }
+
+        if (desiredChanged || ours) {
+          if (input.value !== desired) {
+            input.value = desired;
+            changed = true;
+          }
+          input.classList.toggle("lcu-filled", Boolean(desired));
+          lcuState.lastPush[id] = desired;
+          setAutoTag(id, desired ? level : (pending ? "pending" : null));
+          return;
+        }
+
+        if (input.value.trim()) {
+          // 框里是用户自己填的 → 标记手动，之后不再自动覆盖
+          lcuState.manual.add(id);
+          setAutoTag(id, "manual");
+        }
+      });
+      return changed;
+    }
+
+    function setRole(next) {
+      if (!next || next === role) return;
+      role = next;
+      roleButtons.forEach((item) => item.classList.toggle("active", item.dataset.role === next));
+      excludedChampionIds = new Set(myLists[myListKey("block")]);
+      renderExcludedList();
+    }
+
+    function applyLcuPayload(data) {
+      if (!data || data.ok === false) return;
+
+      if (!data.enabled) {
+        lcuAuto.checked = false;
+        setLcuBar("off", "自动识别已关闭", "在右侧重新勾选即可开启");
+        if (lcuState.wasInSelect) detachLcuFills();
+        lcuState.wasInSelect = false;
+        return;
+      }
+      lcuAuto.checked = true;
+
+      const inSelect = Boolean(data.in_champ_select);
+      if (inSelect && !lcuState.wasInSelect) {
+        // 刚进入新的一次选人 → 上一局的英雄全是过期信息，全部清掉重新接管
+        clearLcuFills(false);
+        lcuState.roleOverride = false;
+      }
+      if (!inSelect && lcuState.wasInSelect) {
+        clearLcuFills();
+        lcuState.roleOverride = false;
+        statusEl.textContent = "已离开选人阶段，自动填入已重置。";
+        scheduleRecommend();
+      }
+      lcuState.wasInSelect = inSelect;
+
+      if (!data.running) {
+        setLcuBar("off", "监听未启动", "网页服务启动后会自动开始检测");
+        return;
+      }
+      if (!data.connected) {
+        const sub = data.error ? `上次错误：${data.error}` : "请先启动英雄联盟客户端（WeGame 或直连客户端）";
+        setLcuBar("off", "未检测到游戏客户端", sub);
+        return;
+      }
+      if (!inSelect) {
+        const source = String(data.source || "客户端").startsWith("lockfile")
+          ? "lockfile"
+          : (data.source || "客户端");
+        setLcuBar("connected", "已连接游戏客户端", `来源 ${source} · 等待进入选人阶段`);
+        return;
+      }
+
+      // 选人进行中
+      const queue = (data.queue || {}).name || "未知模式";
+      const phase = LCU_PHASE_LABEL[data.phase] || data.phase || "选人";
+      const bits = [`${queue} · ${phase}`];
+      if (data.my_position) bits.push(`你的位置：${data.my_position === "adc" ? "ADC" : "辅助"}`);
+      if (data.enemy_pick_count) bits.push(`敌方已选 ${data.enemy_pick_count} 人`);
+      const remaining = (data.timer || {}).remaining_sec;
+      setLcuBar(
+        "live",
+        "正在选人",
+        bits.join(" · "),
+        typeof remaining === "number" && remaining >= 0 ? `${remaining}s` : null,
+      );
+
+      const hint = data.role_hint === "bottom" ? "adc" : data.role_hint;
+      if (hint && !lcuState.roleOverride && hint !== role) {
+        setRole(hint);
+        scheduleRecommend();
+      }
+
+      if (applyLcuFills(data)) scheduleRecommend();
+    }
+
+    async function pollLcu() {
+      if (lcuState.busy) return;
+      lcuState.busy = true;
+      try {
+        const res = await fetch("/api/lcu/state", {cache: "no-store"});
+        lcuState.fails = 0;
+        applyLcuPayload(await res.json());
+      } catch (error) {
+        lcuState.fails += 1;
+        if (lcuState.fails >= 2) {
+          setLcuBar("off", "页面服务未连接", "请确认本机的网页服务仍在运行");
+          if (lcuState.wasInSelect) detachLcuFills();
+          lcuState.wasInSelect = false;
+        }
+      } finally {
+        lcuState.busy = false;
+      }
+    }
+
+    function startLcuPolling() {
+      if (lcuPollTimer) return;
+      pollLcu();
+      lcuPollTimer = setInterval(pollLcu, LCU_POLL_MS);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) pollLcu();
+      });
+    }
 
     let role = "support";
     let championData = {bottom: [], support: []};
@@ -1455,6 +1952,53 @@
       return Number(value).toFixed(1);
     }
 
+    function hasScoreData(value, games) {
+      return Boolean(games) && Number(games) > 0
+        && value !== null && value !== undefined && Number.isFinite(Number(value));
+    }
+
+    // 当前这一屏配合/对位分的分界线，表格、精确卡片、详情磁贴共用
+    let currentScoreTiers = {synergy: null, counter: null};
+
+    // 每列自己算"偏高/偏低"的分界线：取该列有数据的分数的 70% / 30% 分位。
+    //
+    // 为什么不写死 ±8：对位分里混了"样本成熟度"加成，整体会随对局偏移
+    // （实测对位分常在 +11~+27，配合分常在 -8~+15）。写死阈值的话，
+    // 对位那一列会整列全绿，反而看不出谁更好 —— 等于没区分。
+    // 按列取分位，才能保证"好的那批"和"差的那批"各自被挑出来。
+    function columnTiers(rows, valueKey, gamesKey) {
+      const vals = rows
+        .map((row) => {
+          const v = row[valueKey];
+          return (row[gamesKey] || 0) > 0 && v !== null && v !== undefined
+            ? Number(v) : null;
+        })
+        .filter((v) => v !== null && Number.isFinite(v))
+        .sort((a, b) => a - b);
+      if (vals.length < 4) return null;   // 样本太少，不分档
+      if (vals[vals.length - 1] - vals[0] < 6) return null;  // 彼此差得太小，全当中性
+      return {
+        high: vals[Math.floor(vals.length * 0.7)],
+        low: vals[Math.floor(vals.length * 0.3)],
+      };
+    }
+
+    function scoreClass(value, games, tiers) {
+      if (!hasScoreData(value, games)) return "score-none";
+      if (!tiers) return "score-mid";
+      const v = Number(value);
+      if (v >= tiers.high) return "score-high";
+      if (v <= tiers.low) return "score-low";
+      return "score-mid";
+    }
+
+    // 没有这组对局数据时显示 "-"，不要露出引擎的哨兵值 -17.5
+    // （那会让"没数据"看起来像"配合很差"）
+    function scoreText(value, games) {
+      if (!hasScoreData(value, games)) return "-";
+      return Number(value).toFixed(1);
+    }
+
     function confidenceClass(level) {
       return `confidence-${level}`;
     }
@@ -1496,6 +2040,10 @@
       resultsEl.innerHTML = "";
       precisePanel.classList.toggle("active", preciseMode.checked);
       renderPreciseCards();
+      // 这两条分界线供表格、精确卡片、详情磁贴共用
+      const synTiers = columnTiers(rows, "synergy_calibrated_score", "duo_games");
+      const cntTiers = columnTiers(rows, "counter_calibrated_score", "matchup_games");
+      currentScoreTiers = {synergy: synTiers, counter: cntTiers};
       rows.forEach((row, index) => {
         const tr = document.createElement("tr");
         const isFav = isFavoriteChampion(row.name);
@@ -1512,8 +2060,8 @@
           <td><span class="badge">${row.tier}</span></td>
           <td title="推荐指数，不是真实胜率">${row.display_winrate.toFixed(1)}</td>
           <td title="原始基础 ${rating(row.base_rating)}">${rating(row.base_calibrated_score ?? row.base_rating)}</td>
-          <td title="原始配合 ${rating(row.synergy_bonus)}；成熟度 ${rating(row.synergy_maturity_score)}">${rating(row.synergy_calibrated_score ?? row.synergy_bonus)}</td>
-          <td title="原始对位 ${rating(row.counter_bonus)}；成熟度 ${rating(row.counter_maturity_score)}">${rating(row.counter_calibrated_score ?? row.counter_bonus)}</td>
+          <td class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, synTiers)}" title="原始配合 ${rating(row.synergy_bonus)}；成熟度 ${rating(row.synergy_maturity_score)}${(row.duo_games || 0) > 0 ? "" : "（无同队对局数据）"}">${scoreText(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games)}</td>
+          <td class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, cntTiers)}" title="原始对位 ${rating(row.counter_bonus)}；成熟度 ${rating(row.counter_maturity_score)}${(row.matchup_games || 0) > 0 ? "" : "（无对位对局数据）"}">${scoreText(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games)}</td>
           <td>${row.sample_games ?? row.confidence_games ?? ((row.duo_games || 0) + (row.matchup_games || 0))}</td>
           <td class="${confidenceClass(row.confidence_level)}">${row.confidence_label}</td>
           <td class="missing">${row.explanation || row.missing_labels.join("、") || "-"}</td>
@@ -1554,8 +2102,8 @@
           <div><span class="badge">${row.tier}</span> 推荐指数 ${row.display_winrate.toFixed(1)}</div>
           <div class="precise-scores">
             <div class="precise-score"><span>基础</span><strong>${rating(row.base_calibrated_score ?? row.base_rating)}</strong></div>
-            <div class="precise-score"><span>配合</span><strong>${rating(row.synergy_calibrated_score ?? row.synergy_bonus)}</strong></div>
-            <div class="precise-score"><span>对位</span><strong>${rating(row.counter_calibrated_score ?? row.counter_bonus)}</strong></div>
+            <div class="precise-score"><span>配合</span><strong class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, currentScoreTiers.synergy)}">${scoreText(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games)}</strong></div>
+            <div class="precise-score"><span>对位</span><strong class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, currentScoreTiers.counter)}">${scoreText(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games)}</strong></div>
           </div>
           <div class="tag-group">
             ${tagLine("打法", comboTags)}
@@ -1646,11 +2194,11 @@
         .slice(0, 4);
     }
 
-    function scoreTile(label, value, note = "") {
+    function scoreTile(label, value, note = "", level = "") {
       return `
         <div class="score-tile">
           <span>${label}</span>
-          <strong>${value ?? "-"}</strong>
+          <strong class="${level}">${value ?? "-"}</strong>
           ${note ? `<small>${note}</small>` : ""}
         </div>
       `;
@@ -1680,8 +2228,8 @@
         .join("") || "<li>根据当前下路信息选择进退，优先避免无意义亏线。</li>";
       document.querySelector("#precision_scores").innerHTML = [
         scoreTile("基础", data.base_calibrated_score ?? row.base_calibrated_score ?? "-", `原始 ${data.base_rating ?? row.base_rating ?? "-"}`),
-        scoreTile("配合", data.synergy_calibrated_score ?? row.synergy_calibrated_score ?? "-", `场次 ${data.duo_games ?? row.duo_games ?? 0}`),
-        scoreTile("对位", data.counter_calibrated_score ?? row.counter_calibrated_score ?? "-", `场次 ${data.matchup_games ?? row.matchup_games ?? 0}`),
+        scoreTile("配合", scoreText(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games), `场次 ${data.duo_games ?? row.duo_games ?? 0}`, scoreClass(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games, currentScoreTiers.synergy)),
+        scoreTile("对位", scoreText(data.counter_calibrated_score ?? row.counter_calibrated_score, data.matchup_games ?? row.matchup_games), `场次 ${data.matchup_games ?? row.matchup_games ?? 0}`, scoreClass(data.counter_calibrated_score ?? row.counter_calibrated_score, data.matchup_games ?? row.matchup_games, currentScoreTiers.counter)),
       ].join("");
       const basis = [
         [data.base_calibrated_score ?? row.base_calibrated_score ?? 0, "基础强度"],
@@ -1893,10 +2441,10 @@
 
     roleButtons.forEach((button) => {
       button.addEventListener("click", () => {
-        role = button.dataset.role;
-        roleButtons.forEach((item) => item.classList.toggle("active", item === button));
-        excludedChampionIds = new Set(myLists[myListKey("block")]);
-        renderExcludedList();
+        const next = button.dataset.role;
+        if (next === role) return;
+        setRole(next);
+        lcuState.roleOverride = true; // 手动切过分路，本轮选人不再被客户端自动改写
         scheduleRecommend();
       });
     });
@@ -1922,8 +2470,31 @@
     });
     recommendButton.addEventListener("click", recommend);
     clearButton.addEventListener("click", () => {
-      Object.values(inputs).forEach((input) => { input.value = ""; });
+      LCU_SLOT_IDS.forEach((id) => {
+        const input = inputs[id];
+        input.value = "";
+        input.classList.remove("lcu-filled");
+        lcuState.manual.add(id); // 清空后先别马上又被自动填回来，等客户端有新消息再接管
+        setAutoTag(id, null);
+      });
       scheduleRecommend();
+    });
+    lcuAuto.addEventListener("change", async () => {
+      const enabled = lcuAuto.checked;
+      try {
+        const res = await fetch("/api/lcu/config", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({enabled}),
+        });
+        const data = await res.json();
+        lcuAuto.checked = Boolean(data.enabled);
+      } catch (error) {
+        lcuAuto.checked = !enabled;
+        statusEl.textContent = `自动识别开关失败：${error.message}`;
+      }
+      if (!lcuAuto.checked) detachLcuFills();
+      pollLcu();
     });
     filterSelect.addEventListener("change", renderRows);
     sortSelect.addEventListener("change", renderRows);
@@ -2063,12 +2634,105 @@
     document.querySelector("#query_tier").addEventListener("click", queryTier);
     tierLane.addEventListener("change", queryTier);
 
+    // ── 数据更新：网页内直接跑 update_data.py，实时显示进度 ──
+    const PHASE_TEXT = {
+      idle: "准备中", backup: "备份旧数据", fetch: "抓取数据中",
+      validate: "校验数据", test: "API 冒烟测试",
+      done: "更新完成", failed: "更新失败",
+    };
+    let updatePollTimer = null;
+
+    function paintUpdate(status) {
+      const pct = Math.max(0, Math.min(100, Math.round(status.percent || 0)));
+      updateBar.style.width = `${pct}%`;
+      updateBar.parentElement.classList.toggle("is-done", status.phase === "done");
+      updateBar.parentElement.classList.toggle("is-failed", status.phase === "failed");
+
+      const tag = PHASE_TEXT[status.phase] || "";
+      const logs = status.logs || [];
+      const last = logs.length ? logs[logs.length - 1] : "";
+      const failed = status.phase === "failed";
+      // 失败时优先显示后端从 traceback 里挖出来的真正原因，
+      // 而不是日志最后一行（那行常常是被截断的异常开头，看不出所以然）
+      const detail = failed ? (status.error || last) : last;
+      updatePhase.textContent = [tag ? `${tag} ${pct}%` : `${pct}%`, detail]
+        .filter(Boolean).join(" · ");
+      // 完整日志放 title，方便直接复制出来排查
+      updatePhase.title = [status.error, logs.join("\n")].filter(Boolean).join("\n\n");
+      updateProgress.classList.toggle("is-failed", failed);
+    }
+
+    async function pollUpdateStatus() {
+      let status;
+      try {
+        status = await (await fetch("/api/data/update/status")).json();
+      } catch (err) {
+        updateBtn.disabled = false;
+        updateBtn.textContent = "重试更新";
+        updatePhase.textContent = `查询进度失败：${err}`;
+        return;
+      }
+      paintUpdate(status);
+      if (status.running) {
+        updatePollTimer = setTimeout(pollUpdateStatus, 800);
+        return;
+      }
+      if (!status.done) return;   // 还没开始过，别动
+
+      updateBtn.disabled = false;
+      updateBtn.textContent = status.ok ? "更新数据" : "重试更新";
+      if (status.ok) {
+        recommend();   // 新数据生效，顺带刷新更新时间
+      } else if (status.error) {
+        updatePhase.textContent = status.error;
+      }
+    }
+
+    function startUpdate() {
+      updateBtn.disabled = true;
+      updateBtn.textContent = "更新中...";
+      updateProgress.hidden = false;
+      paintUpdate({percent: 2, phase: "backup", logs: []});
+      fetch("/api/data/update", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({}),
+      }).then(() => {
+        clearTimeout(updatePollTimer);
+        pollUpdateStatus();
+      }).catch((err) => {
+        updateBtn.disabled = false;
+        updateBtn.textContent = "重试更新";
+        updatePhase.textContent = `启动失败：${err}`;
+      });
+    }
+
+    updateBtn.addEventListener("click", startUpdate);
+
+    // 刷新页面时如果后台正好在跑，把进度接上
+    (async () => {
+      try {
+        const status = await (await fetch("/api/data/update/status")).json();
+        if (status.running) {
+          updateBtn.disabled = true;
+          updateBtn.textContent = "更新中...";
+          updateProgress.hidden = false;
+          paintUpdate(status);
+          pollUpdateStatus();
+        }
+      } catch (err) {
+        /* 忽略：查不到就当没有更新在跑 */
+      }
+    })();
+
     loadChampions().then(loadMyLists).then(() => {
       excludedChampionIds = new Set(myLists[myListKey("block")]);
       renderExcludedList();
       recommend();
+      startLcuPolling();
     }).catch((error) => {
       statusEl.textContent = `加载失败：${error.message}`;
+      startLcuPolling();
     });
   </script>
 </body>
