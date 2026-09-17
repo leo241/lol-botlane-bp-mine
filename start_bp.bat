@@ -1,6 +1,6 @@
 @echo off
 title LOL Botlane BP Assistant
-cd /d "E:\lol bp\lol-botlane-bp-mine-v2"
+cd /d "E:\lol bp\lol-botlane-bp-mine-v3"
 
 REM 统一用 UTF-8：cmd 默认是 GBK(936)，子进程继承了会编不出 emoji/中文，
 REM 点"更新数据"时 pre_fetch 一打印标题就崩。

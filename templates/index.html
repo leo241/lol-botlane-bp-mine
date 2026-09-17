@@ -350,6 +350,190 @@
       line-height: 1.5;
       margin: 0 0 12px;
     }
+
+    /* ==== 名单设置弹窗 ==== */
+    .lm-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .lm-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .lm-tab:hover { background: var(--accent-soft); }
+    .lm-tab.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+    .lm-count {
+      min-width: 20px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #eef2f7;
+      color: #344054;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .lm-tab.active .lm-count { background: rgba(255, 255, 255, 0.24); color: #fff; }
+    .lm-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .lm-panel-head .lm-title { font-size: 14px; font-weight: 800; }
+    .lm-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 52px;
+      max-height: 168px;
+      overflow: auto;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .lm-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 5px 3px 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .lm-chip img { width: 22px; height: 22px; border-radius: 50%; display: block; }
+    .lm-chip .lm-x {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1;
+      padding: 0 3px;
+      cursor: pointer;
+    }
+    .lm-chip .lm-x:hover { color: #b3261e; }
+    .lm-chip.conflict { border-color: #e0a800; background: #fff8e6; }
+    .lm-empty { color: var(--muted); font-size: 12px; padding: 6px 2px; }
+    .lm-unknown[hidden] { display: none; }
+    .lm-unknown {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid #f0c36d;
+      border-radius: 8px;
+      background: #fff8e6;
+      color: #7a4b00;
+      font-size: 12px;
+    }
+    .lm-unknown .lm-x {
+      border: 0;
+      background: transparent;
+      color: #b3261e;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .lm-picker {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .lm-picker-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .lm-picker-head input {
+      max-width: 220px;
+      min-height: 32px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .lm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+      gap: 6px;
+      max-height: 320px;
+      overflow: auto;
+    }
+    .lm-hero {
+      display: grid;
+      justify-items: center;
+      gap: 3px;
+      padding: 6px 2px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+      user-select: none;
+    }
+    .lm-hero img {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #dbe1ea;
+      object-fit: cover;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+    .lm-hero span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .lm-hero:hover { background: var(--accent-soft); }
+    .lm-hero.in-list {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .lm-hero.in-list img { box-shadow: 0 0 0 2px var(--accent); }
+    .lm-hero.in-list span { color: var(--accent); font-weight: 800; }
+    .lm-hero.hidden { display: none; }
+    .lm-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .lm-saved {
+      color: var(--good);
+      font-weight: 800;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .lm-saved.show { opacity: 1; }
     .query-grid {
       display: grid;
       grid-template-columns: minmax(240px, 360px) auto auto;
@@ -539,10 +723,32 @@
       color: var(--accent);
       font-size: 12px;
     }
-    .confidence-high { color: var(--good); }
-    .confidence-medium { color: var(--mid); }
-    .confidence-low { color: var(--low); }
-    .confidence-very_low { color: var(--muted); }
+    .confidence-high { color: var(--good); font-weight: 700; }
+    .confidence-medium { color: var(--mid); font-weight: 700; }
+    .confidence-low { color: var(--low); font-weight: 700; }
+    .confidence-very_low { color: var(--muted); font-weight: 700; }
+    .col-bold { font-weight: 700; }
+
+    /* 不常用控件弱化处理：可信度筛选、排序方式 */
+    .muted-control {
+      opacity: 0.62;
+      filter: grayscale(0.5);
+      transition: opacity 0.15s, filter 0.15s;
+    }
+    .muted-control:hover,
+    .muted-control:focus {
+      opacity: 1;
+      filter: none;
+    }
+
+    /* 对位分后面的括号胜率，弱化显示，不与主分抢视觉 */
+    .wr-paren {
+      font-size: 0.74em;
+      color: var(--muted);
+      margin-left: 4px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
 
     /* 配合分 / 对位分：偏高、偏低、不高不低三档一眼分得清。
        选择器必须带上父级，否则会被 .score-tile strong / .precise-score strong
@@ -1155,13 +1361,13 @@
       <button class="primary" id="recommend" type="button">重新推荐</button>
       <button class="danger" id="clear" type="button">清空</button>
       <label class="precise-toggle"><input id="precise_mode" type="checkbox"> 精确推荐</label>
-      <button class="secondary" id="open_exclusions" type="button">英雄排除（0）</button>
-      <select id="confidence_filter" aria-label="可信度筛选">
+      <button class="secondary" id="open_lists_manager" type="button">名单设置</button>
+      <select id="confidence_filter" class="muted-control" aria-label="可信度筛选">
         <option value="all">全部可信度</option>
         <option value="high">只看高可信</option>
         <option value="medium">中及以上</option>
       </select>
-      <select id="sort_by" aria-label="排序方式">
+      <select id="sort_by" class="muted-control" aria-label="排序方式">
         <option value="final_rating">按推荐结果</option>
         <option value="display_winrate">按推荐指数</option>
         <option value="base_calibrated_score">按基础表现</option>
@@ -1201,9 +1407,9 @@
           <th>推荐指数<span class="help-tip" tabindex="0" data-tip="综合排序用的推荐值，不是真实胜率。先计算：原始推荐分 = 基础校准分×基础权重 + 配合校准分×配合权重 + 对位校准分×对位权重；如果基础强度很高，但当前配合/对位语境没有明显支持，会扣除语境惩罚来降低 Top 优先级。推荐指数 = 100 / (1 + 10^(-最终推荐分 / 400))。">?</span></th>
           <th>基础表现<span class="help-tip" tabindex="0" data-tip="表格显示用于排序的基础校准分。原始基础表现 = Tier 先验 + 胜率修正；校准公式 = 22 × tanh(原始分 / 30)，用于压低版本强英雄的单项统治力。">?</span></th>
           <th>配合<span class="help-tip" tabindex="0" data-tip="表格显示用于排序的配合校准分。原始配合分 = 置信度 × (75%×超预期配合 + 25%×组合成熟度)，不再叠加组合绝对表现，避免英雄基础强度在配合分里重复计算；校准前会 ×2.0 放大关系差异。">?</span></th>
-          <th>对位<span class="help-tip" tabindex="0" data-tip="表格显示用于排序的对位校准分。原始对位分 = 置信度 × (75%×超预期对位 + 25%×对位样本成熟度)，不再叠加对位绝对表现；成熟度代表样本稳定和熟悉度，不等于一定更克制，校准前会 ×2.0 放大关系差异。">?</span></th>
+          <th>对位<span class="help-tip" tabindex="0" data-tip="表格显示用于排序的对位校准分。原始对位分 = 置信度 × (60%×对位绝对胜率偏差 + 15%×超预期对位 + 25%×样本成熟度)。绝对胜率偏差让分数跟着真实胜率走（五五开≈低分），超预期项保留'比预期多赢多少'的参考；成熟度代表样本稳定度。括号里是双向融合的真实对位胜率。">?</span></th>
           <th>参考场次<span class="help-tip" tabindex="0" data-tip="用于判断本条推荐是否有足够数据支撑。公式：有 BP 信息时，参考场次 = 配合场次 + 对位场次；盲选时，参考场次 = 英雄自身基础场次。场次越高，结果越稳定。">?</span></th>
-          <th>可信度<span class="help-tip" tabindex="0" data-tip="按参考场次分级。公式：参考场次 ≥3000 为高，1000-2999 为中，300-999 为低，低于 300 为极低。可信度只说明样本是否充足，不等于这把一定好赢。">?</span></th>
+          <th class="col-bold">可信度<span class="help-tip" tabindex="0" data-tip="按参考场次分级。公式：参考场次 ≥3000 为高，1000-2999 为中，300-999 为低，低于 300 为极低。可信度只说明样本是否充足，不等于这把一定好赢。">?</span></th>
           <th>解释</th>
         </tr>
       </thead>
@@ -1347,18 +1553,38 @@
     </div>
   </section>
 
-  <section class="modal" id="exclusion_modal" aria-hidden="true">
+  <section class="modal" id="lists_modal" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-head">
-        <h2>英雄排除</h2>
-        <button class="secondary" id="close_exclusions" type="button">关闭</button>
+        <h2>名单设置</h2>
+        <button class="secondary" id="close_lists_manager" type="button">关闭</button>
       </div>
-      <p class="excluded-note">在这里排除的英雄会保存到 data/lists/ 名单文件里，下次打开依然生效。推荐辅助时操作的是辅助名单，推荐 ADC 时是下路名单。也可以直接用记事本编辑名单文件。</p>
-      <label>搜索英雄
-        <input id="exclusion_input" autocomplete="off" placeholder="输入中文名或英文名">
-        <div class="suggestions" id="exclusion_input_suggestions"></div>
+      <p class="excluded-note">
+        四个名单对应 <code>data/lists/</code> 下的 4 个 txt 文件。搜索或点击头像即可加入 / 移出，
+        <strong>每次改动都会立刻写回文件</strong>，刷新页面、重启服务都还在（也可以用记事本直接改）。
+      </p>
+      <div class="lm-tabs" id="lm_tabs"></div>
+      <div class="lm-panel-head">
+        <span class="lm-title" id="lm_title">-</span>
+        <button class="secondary" id="lm_clear" type="button">清空本名单</button>
+      </div>
+      <div class="lm-chips" id="lm_chips"></div>
+      <div class="lm-unknown" id="lm_unknown" hidden></div>
+      <label style="margin-top:12px">搜索添加
+        <input id="lm_input" autocomplete="off" placeholder="中文名 / 别名 / 英文 / 拼音，回车加入">
+        <div class="suggestions" id="lm_input_suggestions"></div>
       </label>
-      <div class="excluded-list" id="excluded_list"></div>
+      <div class="lm-picker">
+        <div class="lm-picker-head">
+          <span id="lm_pool_label">下路(ADC) 英雄 · 点击加入 / 移出</span>
+          <input id="lm_filter" autocomplete="off" placeholder="筛选…">
+        </div>
+        <div class="lm-grid" id="lm_grid"></div>
+      </div>
+      <div class="lm-foot">
+        <span id="lm_file">-</span>
+        <span class="lm-saved" id="lm_saved">✓ 已写入文件</span>
+      </div>
     </div>
   </section>
 
@@ -1377,10 +1603,17 @@
     const precisePanel = document.querySelector("#precise_panel");
     const preciseCards = document.querySelector("#precise_cards");
     const precisionModal = document.querySelector("#precision_modal");
-    const exclusionModal = document.querySelector("#exclusion_modal");
-    const exclusionInput = document.querySelector("#exclusion_input");
-    const excludedList = document.querySelector("#excluded_list");
-    const openExclusionsButton = document.querySelector("#open_exclusions");
+    const listsModal = document.querySelector("#lists_modal");
+    const lmTabs = document.querySelector("#lm_tabs");
+    const lmTitle = document.querySelector("#lm_title");
+    const lmChips = document.querySelector("#lm_chips");
+    const lmUnknown = document.querySelector("#lm_unknown");
+    const lmInput = document.querySelector("#lm_input");
+    const lmFilter = document.querySelector("#lm_filter");
+    const lmPoolLabel = document.querySelector("#lm_pool_label");
+    const lmGrid = document.querySelector("#lm_grid");
+    const lmFile = document.querySelector("#lm_file");
+    const lmSaved = document.querySelector("#lm_saved");
     const filterSelect = document.querySelector("#confidence_filter");
     const sortSelect = document.querySelector("#sort_by");
     const roleButtons = Array.from(document.querySelectorAll("[data-role]"));
@@ -1568,7 +1801,6 @@
       role = next;
       roleButtons.forEach((item) => item.classList.toggle("active", item.dataset.role === next));
       excludedChampionIds = new Set(myLists[myListKey("block")]);
-      renderExcludedList();
     }
 
     function applyLcuPayload(data) {
@@ -1667,6 +1899,7 @@
 
     let role = "support";
     let championData = {bottom: [], support: []};
+    let allChampions = [];
     let latestRows = [];
     let latestPreciseRows = [];
     let latestSynergyRows = [];
@@ -1692,18 +1925,34 @@
       return myLists[myListKey("fav")].includes(championId);
     }
 
+    const myListsInfo = {
+      adc_fav: {label: "下路(ADC) 经常使用", tab: "ADC 常用", lane: "bottom"},
+      adc_block: {label: "下路(ADC) 不推荐", tab: "ADC 不推荐", lane: "bottom"},
+      support_fav: {label: "辅助 经常使用", tab: "辅助 常用", lane: "support"},
+      support_block: {label: "辅助 不推荐", tab: "辅助 不推荐", lane: "support"},
+    };
+    const myListsDetail = {
+      adc_block: [],
+      adc_fav: [],
+      support_block: [],
+      support_fav: [],
+    };
+
     function applyMyListsData(data) {
       if (!data || !data.ok) return;
       Object.keys(myLists).forEach((key) => {
-        myLists[key] = (data.lists[key]?.champions || []).map((champion) => champion.id);
+        const champions = data.lists[key]?.champions || [];
+        myLists[key] = champions.map((champion) => champion.id);
+        myListsDetail[key] = champions;
         myListsUnknown[key] = data.lists[key]?.unknown || [];
+        if (data.lists[key]?.label) myListsInfo[key].label = data.lists[key].label;
+        if (data.lists[key]?.rel_file) myListsInfo[key].rel_file = data.lists[key].rel_file;
       });
       const unknownCount = Object.values(myListsUnknown).reduce((sum, list) => sum + list.length, 0);
       if (unknownCount > 0) {
         console.warn("名单里有未识别的行：", myListsUnknown);
       }
       excludedChampionIds = new Set(myLists[myListKey("block")]);
-      renderExcludedList();
     }
 
     async function loadMyLists() {
@@ -1765,6 +2014,7 @@
     }
 
     function getChampionPool(lane) {
+      if (lane === "every") return allChampions;
       if (lane === "all") {
         const seen = new Set();
         return [...championData.bottom, ...championData.support].filter((champion) => {
@@ -1999,6 +2249,28 @@
       return Number(value).toFixed(1);
     }
 
+    // 对位分单元格：分数后追加 (对位胜率 XX%)。胜率来自后端双向融合结果，
+    // 让用户在看对位分时心里有数——它到底建立在多高的真实胜率上。
+    function counterScoreCell(cr) {
+      const value = cr.counter_calibrated_score != null ? cr.counter_calibrated_score : cr.counter_bonus;
+      const games = cr.matchup_games || 0;
+      const txt = scoreText(value, games);
+      if (games > 0 && cr.matchup_winrate_pct != null) {
+        return `${txt}<span class="wr-paren" title="双向融合对位胜率">(${cr.matchup_winrate_pct}%)</span>`;
+      }
+      return txt;
+    }
+
+    // 通用分数单元格：分数后追加 (真实胜率 XX%)。配合 / 基础分复用，
+    // 让"这个分建立在多高的真实胜率上"一眼可见，和括号里的胜率不再脱节。
+    function scoreCell(score, games, winratePct, title) {
+      const txt = scoreText(score, games);
+      if (games > 0 && winratePct != null && winratePct !== "") {
+        return `${txt}<span class="wr-paren" title="${title || "真实胜率"}">(${winratePct}%)</span>`;
+      }
+      return txt;
+    }
+
     function confidenceClass(level) {
       return `confidence-${level}`;
     }
@@ -2008,7 +2280,9 @@
     }
 
     function championById(id) {
-      return [...championData.bottom, ...championData.support].find((champion) => champion.id === id);
+      const local = [...championData.bottom, ...championData.support].find((champion) => champion.id === id);
+      if (local) return local;
+      return allChampions.find((champion) => champion.id === id);
     }
 
     function applyExclusions(rows) {
@@ -2059,12 +2333,12 @@
           </td>
           <td><span class="badge">${row.tier}</span></td>
           <td title="推荐指数，不是真实胜率">${row.display_winrate.toFixed(1)}</td>
-          <td title="原始基础 ${rating(row.base_rating)}">${rating(row.base_calibrated_score ?? row.base_rating)}</td>
-          <td class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, synTiers)}" title="原始配合 ${rating(row.synergy_bonus)}；成熟度 ${rating(row.synergy_maturity_score)}${(row.duo_games || 0) > 0 ? "" : "（无同队对局数据）"}">${scoreText(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games)}</td>
-          <td class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, cntTiers)}" title="原始对位 ${rating(row.counter_bonus)}；成熟度 ${rating(row.counter_maturity_score)}${(row.matchup_games || 0) > 0 ? "" : "（无对位对局数据）"}">${scoreText(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games)}</td>
+          <td title="原始基础 ${rating(row.base_rating)}">${scoreCell(row.base_calibrated_score ?? row.base_rating, row.base_games, row.base_winrate, "英雄自身胜率")}</td>
+          <td class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, synTiers)}" title="原始配合 ${rating(row.synergy_bonus)}；成熟度 ${rating(row.synergy_maturity_score)}${(row.duo_games || 0) > 0 ? "" : "（无同队对局数据）"}">${scoreCell(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, row.actual_duo_absolute_winrate, "真实同队胜率")}</td>
+          <td class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, cntTiers)}" title="原始对位 ${rating(row.counter_bonus)}；成熟度 ${rating(row.counter_maturity_score)}${(row.matchup_games || 0) > 0 ? "" : "（无对位对局数据）"}">${counterScoreCell(row)}</td>
           <td>${row.sample_games ?? row.confidence_games ?? ((row.duo_games || 0) + (row.matchup_games || 0))}</td>
           <td class="${confidenceClass(row.confidence_level)}">${row.confidence_label}</td>
-          <td class="missing">${row.explanation || row.missing_labels.join("、") || "-"}</td>
+          <td class="rec-reason">${row.recommend_reason || row.explanation || row.missing_labels.join("、") || "-"}</td>
         `;
         resultsEl.appendChild(tr);
       });
@@ -2101,9 +2375,9 @@
           </div>
           <div><span class="badge">${row.tier}</span> 推荐指数 ${row.display_winrate.toFixed(1)}</div>
           <div class="precise-scores">
-            <div class="precise-score"><span>基础</span><strong>${rating(row.base_calibrated_score ?? row.base_rating)}</strong></div>
-            <div class="precise-score"><span>配合</span><strong class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, currentScoreTiers.synergy)}">${scoreText(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games)}</strong></div>
-            <div class="precise-score"><span>对位</span><strong class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, currentScoreTiers.counter)}">${scoreText(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games)}</strong></div>
+            <div class="precise-score"><span>基础</span><strong>${scoreCell(row.base_calibrated_score ?? row.base_rating, row.base_games, row.base_winrate, "英雄自身胜率")}</strong></div>
+            <div class="precise-score"><span>配合</span><strong class="${scoreClass(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, currentScoreTiers.synergy)}">${scoreCell(row.synergy_calibrated_score ?? row.synergy_bonus, row.duo_games, row.actual_duo_absolute_winrate, "真实同队胜率")}</strong></div>
+            <div class="precise-score"><span>对位</span><strong class="${scoreClass(row.counter_calibrated_score ?? row.counter_bonus, row.matchup_games, currentScoreTiers.counter)}">${counterScoreCell(row)}</strong></div>
           </div>
           <div class="tag-group">
             ${tagLine("打法", comboTags)}
@@ -2123,49 +2397,219 @@
       });
     }
 
-    function updateExclusionButton() {
-      openExclusionsButton.textContent = `英雄排除（${excludedChampionIds.size}）`;
+    // ── 名单设置：可视化编辑 data/lists/ 下的 4 个文件 ──
+    let lmActiveKey = "support_fav";
+    let lmSavedTimer = null;
+    // 把名单的增删改串成一个队列，避免快速连续点击时多次请求交错、响应乱序覆盖
+    let lmChain = Promise.resolve();
+
+    function lmDefaultKey() {
+      return role === "adc" ? "adc_fav" : "support_fav";
     }
 
-    function renderExcludedList() {
-      excludedList.innerHTML = "";
-      if (!excludedChampionIds.size) {
-        excludedList.innerHTML = `<div class="excluded-empty">暂无排除英雄。</div>`;
-        updateExclusionButton();
+    function lmIsIn(key, championId) {
+      return myLists[key].includes(championId);
+    }
+
+    function lmShowSaved() {
+      lmSaved.classList.add("show");
+      clearTimeout(lmSavedTimer);
+      lmSavedTimer = setTimeout(() => lmSaved.classList.remove("show"), 1600);
+    }
+
+    function lmAfterChange() {
+      renderLmTabs();
+      renderLmChips();
+      renderLmUnknown();
+      renderLmGrid();
+      lmShowSaved();
+      // 名单变了，主页面的排除列表和推荐结果也要跟着刷新
+      excludedChampionIds = new Set(myLists[myListKey("block")]);
+      renderRows();
+      recommendCache.clear();
+      scheduleRecommend();
+    }
+
+    async function doLmPost(body) {
+      const res = await fetch("/api/mylists", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "保存失败");
+      }
+      applyMyListsData(data);
+      lmAfterChange();
+    }
+
+    // 串行化：每个改动都排队到上一次完成之后，确保服务端按点选顺序落盘、响应不会乱序覆盖
+    function lmPost(body) {
+      lmChain = lmChain.then(() => doLmPost(body), () => doLmPost(body));
+      return lmChain;
+    }
+
+    async function lmToggleChampion(championId) {
+      if (!championId) return;
+      const action = lmIsIn(lmActiveKey, championId) ? "remove" : "add";
+      try {
+        await lmPost({list: lmActiveKey, action, champion: championId});
+      } catch (error) {
+        statusEl.textContent = `名单保存失败：${error.message}`;
+      }
+    }
+
+    async function lmClearList() {
+      if (!myLists[lmActiveKey].length) return;
+      const label = myListsInfo[lmActiveKey].label;
+      if (!confirm(`确定清空「${label}」里的全部 ${myLists[lmActiveKey].length} 个英雄吗？\n（文件里的注释会保留）`)) return;
+      try {
+        await lmPost({list: lmActiveKey, action: "set", champions: []});
+      } catch (error) {
+        statusEl.textContent = `清空失败：${error.message}`;
+      }
+    }
+
+    async function lmRemoveUnknown(raw) {
+      try {
+        await lmPost({list: lmActiveKey, action: "remove_unknown", champion: raw});
+      } catch (error) {
+        statusEl.textContent = `删除失败：${error.message}`;
+      }
+    }
+
+    function renderLmTabs() {
+      lmTabs.innerHTML = "";
+      Object.keys(myListsInfo).forEach((key) => {
+        const info = myListsInfo[key];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `lm-tab${key === lmActiveKey ? " active" : ""}`;
+        button.innerHTML = `${info.tab}<span class="lm-count">${myLists[key].length}</span>`;
+        button.addEventListener("click", () => {
+          if (lmActiveKey === key) return;
+          lmActiveKey = key;
+          lmInput.value = "";
+          hideSuggestions(lmInput.id);
+          lmFilter.value = "";
+          renderLmTabs();
+          renderLmChips();
+          renderLmUnknown();
+          renderLmGrid();
+          lmInput.focus();
+        });
+        lmTabs.appendChild(button);
+      });
+      const info = myListsInfo[lmActiveKey];
+      lmTitle.textContent = `${info.label}（${myLists[lmActiveKey].length}）`;
+      lmFile.textContent = info.rel_file ? `文件：${info.rel_file}` : "";
+    }
+
+    function renderLmChips() {
+      const oppositeKey = lmActiveKey.includes("_fav")
+        ? lmActiveKey.replace("_fav", "_block")
+        : lmActiveKey.replace("_block", "_fav");
+      lmChips.innerHTML = "";
+      const detail = myListsDetail[lmActiveKey] || [];
+      if (!detail.length) {
+        lmChips.innerHTML = `<div class="lm-empty">这份名单还是空的 —— 在下面搜索，或者直接点英雄头像加进去。</div>`;
         return;
       }
-      [...excludedChampionIds].forEach((id) => {
-        const champion = championById(id);
-        if (!champion) return;
-        const item = document.createElement("div");
-        item.className = "excluded-item";
+      detail.forEach((champion) => {
+        const conflict = lmIsIn(oppositeKey, champion.id);
+        const item = document.createElement("span");
+        item.className = `lm-chip${conflict ? " conflict" : ""}`;
+        item.title = conflict
+          ? `注意：这个英雄同时也在「${myListsInfo[oppositeKey].tab}」里，不推荐优先，它不会被推荐出来`
+          : "点击 × 移出名单";
         item.innerHTML = `
-          <div class="champ">
-            <img src="${champion.avatar}" alt="">
-            <span>${champion.cn_name}<small>${champion.name}</small></span>
-          </div>
-          <button class="secondary" type="button">移除</button>
+          <img src="${champion.avatar}" alt="">
+          <span>${champion.cn_name}</span>
+          <button class="lm-x" type="button" title="移出名单">×</button>
         `;
-        item.querySelector("button").addEventListener("click", () => {
-          excludedChampionIds.delete(id);
-          persistMyList(myListKey("block"), "remove", id);
-          renderExcludedList();
-          renderRows();
-          scheduleRecommend();
-        });
-        excludedList.appendChild(item);
+        item.querySelector(".lm-x").addEventListener("click", () => lmToggleChampion(champion.id));
+        lmChips.appendChild(item);
       });
-      updateExclusionButton();
     }
 
-    function addExcludedChampion(champion) {
+    function renderLmUnknown() {
+      const rows = myListsUnknown[lmActiveKey] || [];
+      if (!rows.length) {
+        lmUnknown.hidden = true;
+        lmUnknown.innerHTML = "";
+        return;
+      }
+      lmUnknown.hidden = false;
+      lmUnknown.innerHTML = `<span>识别不了的行（不会生效，建议修好或删掉）：</span>`;
+      rows.forEach((row) => {
+        const item = document.createElement("span");
+        item.className = "lm-chip";
+        item.innerHTML = `<span>${row.raw}</span><small>第 ${row.line} 行</small><button class="lm-x" type="button" title="删掉这一行">×</button>`;
+        item.querySelector(".lm-x").addEventListener("click", () => lmRemoveUnknown(row.raw));
+        lmUnknown.appendChild(item);
+      });
+    }
+
+    function lmMatchFilter(champion, text) {
+      if (!text) return true;
+      const value = compactText(text);
+      const direct = compactText(champion.cn_name).includes(value)
+        || compactText(champion.name).includes(value)
+        || champion.id.includes(value);
+      if (direct) return true;
+      return (champion.aliases || []).some((alias) => compactText(alias).includes(value));
+    }
+
+    function renderLmGrid() {
+      lmGrid.innerHTML = "";
+      const filter = lmFilter.value.trim();
+      const activeLane = myListsInfo[lmActiveKey].lane;
+      const pool = (championData[activeLane] && championData[activeLane].length)
+        ? championData[activeLane]
+        : [];
+      if (lmPoolLabel) {
+        lmPoolLabel.textContent = `${activeLane === "bottom" ? "下路(ADC)" : "辅助"}英雄 · 点击加入 / 移出`;
+      }
+      if (!pool.length) {
+        lmGrid.innerHTML = `<div class="lm-empty">英雄列表还没加载完，稍等一下。</div>`;
+        return;
+      }
+      pool.forEach((champion) => {
+        if (!lmMatchFilter(champion, filter)) return;
+        const inList = lmIsIn(lmActiveKey, champion.id);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `lm-hero${inList ? " in-list" : ""}`;
+        button.title = `${champion.cn_name}（${champion.name}）`;
+        button.innerHTML = `<img src="${champion.avatar}" alt="" draggable="false"><span>${champion.cn_name}</span>`;
+        button.addEventListener("click", () => lmToggleChampion(champion.id));
+        lmGrid.appendChild(button);
+      });
+    }
+
+    function lmAddChampion(champion) {
       if (!champion || !champion.id) return;
-      excludedChampionIds.add(champion.id);
-      exclusionInput.value = "";
-      hideSuggestions(exclusionInput.id);
-      renderExcludedList();
-      renderRows();
-      persistMyList(myListKey("block"), "add", champion.id);
+      if (lmIsIn(lmActiveKey, champion.id)) {
+        lmInput.value = "";
+        return;
+      }
+      lmToggleChampion(champion.id);
+      lmInput.value = "";
+      hideSuggestions(lmInput.id);
+    }
+
+    function openListsManager() {
+      lmActiveKey = lmDefaultKey();
+      lmInput.value = "";
+      lmFilter.value = "";
+      listsModal.classList.add("active");
+      listsModal.setAttribute("aria-hidden", "false");
+      renderLmTabs();
+      renderLmChips();
+      renderLmUnknown();
+      renderLmGrid();
+      lmInput.focus();
     }
 
     function renderTagGroups(row) {
@@ -2227,9 +2671,14 @@
         .map((item) => `<li>${item}</li>`)
         .join("") || "<li>根据当前下路信息选择进退，优先避免无意义亏线。</li>";
       document.querySelector("#precision_scores").innerHTML = [
-        scoreTile("基础", data.base_calibrated_score ?? row.base_calibrated_score ?? "-", `原始 ${data.base_rating ?? row.base_rating ?? "-"}`),
-        scoreTile("配合", scoreText(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games), `场次 ${data.duo_games ?? row.duo_games ?? 0}`, scoreClass(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games, currentScoreTiers.synergy)),
-        scoreTile("对位", scoreText(data.counter_calibrated_score ?? row.counter_calibrated_score, data.matchup_games ?? row.matchup_games), `场次 ${data.matchup_games ?? row.matchup_games ?? 0}`, scoreClass(data.counter_calibrated_score ?? row.counter_calibrated_score, data.matchup_games ?? row.matchup_games, currentScoreTiers.counter)),
+        scoreTile("基础", scoreCell(data.base_calibrated_score ?? row.base_calibrated_score ?? "-", row.base_games ?? 0, row.base_winrate, "英雄自身胜率"), `原始 ${data.base_rating ?? row.base_rating ?? "-"}`),
+        scoreTile("配合", scoreCell(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games, data.actual_duo_absolute_winrate ?? row.actual_duo_absolute_winrate, "真实同队胜率"), `场次 ${data.duo_games ?? row.duo_games ?? 0}`, scoreClass(data.synergy_calibrated_score ?? row.synergy_calibrated_score, data.duo_games ?? row.duo_games, currentScoreTiers.synergy)),
+        scoreTile("对位", counterScoreCell({
+          counter_calibrated_score: data.counter_calibrated_score ?? row.counter_calibrated_score,
+          counter_bonus: data.counter_bonus ?? row.counter_bonus,
+          matchup_games: data.matchup_games ?? row.matchup_games,
+          matchup_winrate_pct: data.matchup_winrate_pct ?? row.matchup_winrate_pct,
+        }), `场次 ${data.matchup_games ?? row.matchup_games ?? 0}`, scoreClass(data.counter_calibrated_score ?? row.counter_calibrated_score, data.matchup_games ?? row.matchup_games, currentScoreTiers.counter)),
       ].join("");
       const basis = [
         [data.base_calibrated_score ?? row.base_calibrated_score ?? 0, "基础强度"],
@@ -2394,6 +2843,14 @@
       fillDatalist("#all_champion_list", [...data.bottom, ...data.support]);
       metrics.update.textContent = data.data_meta.update_time || "-";
       statusEl.textContent = "英雄列表已加载";
+      // 名单设置要用全量英雄（含非下路/辅助的英雄），加载失败也不影响主流程
+      try {
+        const allRes = await fetch("/api/champions/all");
+        const allData = await allRes.json();
+        allChampions = allData.champions || [];
+      } catch (error) {
+        allChampions = [];
+      }
     }
 
     async function recommend() {
@@ -2503,28 +2960,31 @@
       precisionModal.classList.remove("active");
       precisionModal.setAttribute("aria-hidden", "true");
     });
-    openExclusionsButton.addEventListener("click", () => {
-      exclusionModal.classList.add("active");
-      exclusionModal.setAttribute("aria-hidden", "false");
-      renderExcludedList();
-      exclusionInput.focus();
-    });
-    document.querySelector("#close_exclusions").addEventListener("click", () => {
-      exclusionModal.classList.remove("active");
-      exclusionModal.setAttribute("aria-hidden", "true");
-    });
     precisionModal.addEventListener("click", (event) => {
       if (event.target === precisionModal) {
         precisionModal.classList.remove("active");
         precisionModal.setAttribute("aria-hidden", "true");
       }
     });
-    exclusionModal.addEventListener("click", (event) => {
-      if (event.target === exclusionModal) {
-        exclusionModal.classList.remove("active");
-        exclusionModal.setAttribute("aria-hidden", "true");
+    document.querySelector("#open_lists_manager").addEventListener("click", openListsManager);
+    document.querySelector("#close_lists_manager").addEventListener("click", () => {
+      listsModal.classList.remove("active");
+      listsModal.setAttribute("aria-hidden", "true");
+    });
+    listsModal.addEventListener("click", (event) => {
+      if (event.target === listsModal) {
+        listsModal.classList.remove("active");
+        listsModal.setAttribute("aria-hidden", "true");
       }
     });
+    document.querySelector("#lm_clear").addEventListener("click", lmClearList);
+    lmInput.addEventListener("input", () => showSuggestions(lmInput, myListsInfo[lmActiveKey].lane, lmAddChampion));
+    lmInput.addEventListener("keydown", (event) => {
+      handleSearchKeydown(event, lmInput, myListsInfo[lmActiveKey].lane, lmAddChampion, () => {
+        lmAddChampion(findChampion(lmInput.value, myListsInfo[lmActiveKey].lane));
+      });
+    });
+    lmFilter.addEventListener("input", renderLmGrid);
 
     synergyInput.addEventListener("input", () => showSuggestions(synergyInput, "all"));
     synergyInput.addEventListener("keydown", (event) => {
@@ -2536,13 +2996,6 @@
       handleSearchKeydown(event, counterInput, "all", null, queryCounter);
     });
     counterInput.addEventListener("blur", () => setTimeout(() => canonicalizeInput(counterInput, "all"), 120));
-    exclusionInput.addEventListener("input", () => showSuggestions(exclusionInput, recommendationLane(), addExcludedChampion));
-    exclusionInput.addEventListener("keydown", (event) => {
-      handleSearchKeydown(event, exclusionInput, recommendationLane(), addExcludedChampion, () => {
-        const champion = findChampion(exclusionInput.value, recommendationLane());
-        addExcludedChampion(champion);
-      });
-    });
 
     function renderSimpleRows(tbody, rows, scoreLabel = "win_rate", showGames = false, showCounterMeta = false) {
       tbody.innerHTML = "";
@@ -2727,7 +3180,6 @@
 
     loadChampions().then(loadMyLists).then(() => {
       excludedChampionIds = new Set(myLists[myListKey("block")]);
-      renderExcludedList();
       recommend();
       startLcuPolling();
     }).catch((error) => {

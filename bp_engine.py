@@ -79,8 +79,10 @@ LEGACY_RELATION_GAMES = 300
 RELATION_CONFIDENCE_GAMES = 1500
 SYNERGY_ABSOLUTE_WEIGHT = 0.0
 SYNERGY_RESIDUAL_WEIGHT = 0.75
-COUNTER_ABSOLUTE_WEIGHT = 0.0
-COUNTER_RESIDUAL_WEIGHT = 0.75
+# 对位分改为"绝对胜率偏差为主、超预期为辅"：分数跟着真实对位胜率走，
+# 五五开≈低分，避免残月之肃这种"评分低但五五开"被残差顶成高分。
+COUNTER_ABSOLUTE_WEIGHT = 0.6
+COUNTER_RESIDUAL_WEIGHT = 0.15
 RELATION_MATURITY_WEIGHT = 0.25
 RELATION_AMPLIFICATION_FACTOR = 2.0
 RELATION_MATURITY_REFERENCE_GAMES = 3000
@@ -464,6 +466,87 @@ def top_matchup_games(db, candidate, enemy_role, candidate_lane=None):
     return top_games
 
 
+def compute_matchup(db, candidate_lane, enemy_lane, candidate, enemy, legacy_games=LEGACY_RELATION_GAMES):
+    """
+    统一对位计算：读取位置纯净的 counter_by_lane 数据，正向 + 反向双向融合。
+
+    推荐页与剋制查询共用此函数，确保两处结论一致，且都不再读被位置覆盖污染的
+    旧合并表 db["counter"]。
+
+    - 正向：我方候选(candidate，在 candidate_lane) 打敌方(enemy) 的胜率
+    - 反向：敌方(enemy，在 enemy_lane) 打候选的胜率，反推为我方胜率
+    - 双向按 sqrt(场次) 加权融合，得到更接近真实的对位胜率
+    """
+    def _key(lane):
+        return "vs_adc" if lane == "bottom" else "vs_sup"
+
+    fwd_key = _key(enemy_lane)
+    rev_key = _key(candidate_lane)
+    fwd_matrix = db.get("counter_by_lane", {}).get(candidate_lane, {})
+    rev_matrix = db.get("counter_by_lane", {}).get(enemy_lane, {})
+
+    forward = extract_stat(
+        fwd_matrix.get(candidate, {}).get(fwd_key, {}).get(enemy),
+        legacy_games=legacy_games,
+    )
+    reverse = extract_stat(
+        rev_matrix.get(enemy, {}).get(rev_key, {}).get(candidate),
+        legacy_games=legacy_games,
+    )
+
+    evidence = []
+    if forward["winrate"] is not None and forward["games"] > 0:
+        evidence.append(
+            {
+                "win_rate": forward["winrate"] * 100,
+                "games": forward["games"],
+                "weight": math.sqrt(forward["games"]),
+            }
+        )
+    if reverse["winrate"] is not None and reverse["games"] > 0:
+        evidence.append(
+            {
+                "win_rate": (1 - reverse["winrate"]) * 100,
+                "games": reverse["games"],
+                "weight": math.sqrt(reverse["games"]),
+            }
+        )
+
+    if not evidence:
+        return {
+            "forward_win_rate": None,
+            "reverse_win_rate": None,
+            "fused_win_rate": None,
+            "effective_games": 0,
+            "consistency_gap": None,
+            "n_sides": 0,
+            "forward_games": 0,
+            "reverse_games": 0,
+        }
+
+    total_weight = sum(item["weight"] for item in evidence)
+    fused = sum(item["win_rate"] * item["weight"] for item in evidence) / total_weight
+    total_games = sum(item["games"] for item in evidence)
+    forward_win_rate = forward["winrate"] * 100 if forward["games"] > 0 else None
+    reverse_win_rate = (1 - reverse["winrate"]) * 100 if reverse["games"] > 0 else None
+    consistency_gap = (
+        abs(forward_win_rate - reverse_win_rate)
+        if forward_win_rate is not None and reverse_win_rate is not None
+        else None
+    )
+    return {
+        "forward_win_rate": round(forward_win_rate, 2) if forward_win_rate is not None else None,
+        "reverse_win_rate": round(reverse_win_rate, 2) if reverse_win_rate is not None else None,
+        "fused_win_rate": round(fused, 2),
+        "effective_games": int(total_games),
+        "consistency_gap": round(consistency_gap, 2) if consistency_gap is not None else None,
+        "n_sides": len(evidence),
+        "forward_games": int(forward["games"]),
+        "reverse_games": int(reverse["games"]),
+    }
+
+
+
 def counter_role_weight(recommend_role, enemy_role):
     if recommend_role == "support":
         return 1.35 if enemy_role == "support" else 1.0
@@ -486,13 +569,26 @@ def calculate_counter_bonus(
     actual_rates = []
     actual_absolute_rates = []
     confidence_values = []
+    matchup_winrates = []
+    matchup_winrate_games = []
+    consistency_gaps = []
 
     for enemy, enemy_lane, enemy_role in enemies:
         enemy_tier = db.get("tiers", {}).get(enemy_lane, {}).get(enemy)
         enemy_base = calculate_base_rating(db, enemy_lane, enemy, enemy_tier)
         expected_rating = candidate_expectation_rating - enemy_base["expectation_rating"]
-        stat = get_matchup_stat(db, candidate, enemy, enemy_role, candidate_lane)
-        if stat["games"] > 0:
+        matchup = compute_matchup(db, candidate_lane, enemy_lane, candidate, enemy)
+        fused = matchup["fused_win_rate"]
+        stat_games = matchup["effective_games"]
+        if stat_games <= 0:
+            stat = {"winrate": None, "games": 0, "wins": 0}
+        else:
+            stat = {
+                "winrate": fused / 100.0,
+                "games": stat_games,
+                "wins": fused / 100.0 * stat_games,
+            }
+        if stat_games > 0:
             valid_count += 1
         blended = blended_relation_score(
             stat,
@@ -509,13 +605,28 @@ def calculate_counter_bonus(
         weighted_residual_scores.append(blended["residual_score"] * weight)
         weighted_maturity_scores.append(blended["maturity_score"] * weight)
         weights.append(weight)
-        games += int(stat["games"])
+        games += int(stat_games)
         expected_rates.append(blended["expected_winrate"])
         if blended["actual_winrate"] is not None:
             actual_rates.append(blended["actual_winrate"])
         if blended["actual_absolute_winrate"] is not None:
             actual_absolute_rates.append(blended["actual_absolute_winrate"])
         confidence_values.append(blended["confidence"])
+        if fused is not None and stat_games > 0:
+            matchup_winrates.append(fused)
+            matchup_winrate_games.append(stat_games)
+        if matchup["consistency_gap"] is not None:
+            consistency_gaps.append(matchup["consistency_gap"])
+
+    if matchup_winrates:
+        matchup_winrate_pct = sum(
+            wr * g for wr, g in zip(matchup_winrates, matchup_winrate_games)
+        ) / sum(matchup_winrate_games)
+    else:
+        matchup_winrate_pct = None
+    consistency_gap_avg = (
+        sum(consistency_gaps) / len(consistency_gaps) if consistency_gaps else None
+    )
 
     if not weights:
         return {
@@ -529,6 +640,8 @@ def calculate_counter_bonus(
             "actual_matchup_winrate": None,
             "actual_matchup_absolute_winrate": None,
             "counter_data_count": 0,
+            "matchup_winrate_pct": None,
+            "matchup_consistency_gap": None,
         }
     total_weight = sum(weights)
 
@@ -549,6 +662,12 @@ def calculate_counter_bonus(
             else None
         ),
         "counter_data_count": valid_count,
+        "matchup_winrate_pct": (
+            round(matchup_winrate_pct, 2) if matchup_winrate_pct is not None else None
+        ),
+        "matchup_consistency_gap": (
+            round(consistency_gap_avg, 2) if consistency_gap_avg is not None else None
+        ),
     }
 
 
@@ -619,6 +738,33 @@ def build_explanation(row, ally, enemies):
         parts.append("样本量不足")
 
     return "；".join(parts) + "。"
+
+
+def build_list_explanation(row, ally, enemies):
+    """表格「解释」列用的精简一句话，跟随当前 BP 语境给出推荐理由。
+
+    相比 build_explanation（偏指标描述），这里更贴近精确推荐的小字风格，
+    直接说「为什么推荐 / 不推荐这个英雄」。
+    """
+    if row.get("missing_fields"):
+        return "信息不完整，建议结合熟练度判断"
+    if enemies:
+        counter = row.get("counter_bonus", 0)
+        if counter >= 8:
+            return "面对当前敌方下路有更好的对位价值"
+        if counter <= -8:
+            return "面对当前敌方下路对位偏劣势"
+    if ally and row.get("duo_games", 0) > 0:
+        synergy = row.get("synergy_bonus", 0)
+        if synergy >= 8:
+            return "和当前搭档适配度较高"
+        if synergy <= -8:
+            return "和当前搭档配合偏劣势"
+    if row.get("base_rating", 0) >= 12:
+        return "版本表现强势，综合推荐靠前"
+    if row.get("confidence_level") in ("low", "very_low"):
+        return "样本偏少，结果仅供参考"
+    return "综合表现靠前，适合作为候选"
 
 
 def build_display_meta(score, ally, enemies, has_context=False):
@@ -1358,6 +1504,8 @@ def run_recommend(role, bp_state, db, top_n=None):
             "duo_games": synergy["duo_games"],
             "matchup_games": counter["matchup_games"],
             "counter_data_count": counter["counter_data_count"],
+            "matchup_winrate_pct": counter["matchup_winrate_pct"],
+            "matchup_consistency_gap": counter["matchup_consistency_gap"],
             "synergy_data_found": synergy["duo_games"] > 0,
             "expected_duo_winrate": (
                 round(synergy["expected_duo_winrate"] * 100, 2)
@@ -1392,6 +1540,7 @@ def run_recommend(role, bp_state, db, top_n=None):
         }
         row.update(build_display_meta(row, ally, enemies, has_context=bool(ally or enemies)))
         row["explanation"] = build_explanation(row, ally, enemies)
+        row["recommend_reason"] = build_list_explanation(row, ally, enemies)
         row.update(build_precision_meta(db, role, bp_state, row, ally))
         # Legacy aliases keep existing clients usable while the UI migrates.
         row["final_score"] = row["display_winrate"]
@@ -1430,7 +1579,7 @@ def find_counter_picks(enemy, role, db, top_n=5):
     """
     查“敌方选了 enemy，我方选谁更好打”。
 
-    单英雄克制查询采用双向校验：
+    与推荐页统一使用位置纯净的 counter_by_lane 数据，并采用双向校验：
     1. 正向：候选英雄自己的 matchup 表里，候选打 enemy 的胜率。
     2. 反向：enemy 自己的 matchup 表里，enemy 打候选的胜率，再反推为我方胜率。
 
@@ -1440,60 +1589,23 @@ def find_counter_picks(enemy, role, db, top_n=5):
     enemy = normalize_champion(enemy)
     role = normalize_champion(role)
     meta = get_role_meta(role)
-    enemy_key_for_candidate = (
-        "vs_adc" if enemy in db["tiers"].get("bottom", {}) else "vs_sup"
-    )
-    candidate_key_for_enemy = "vs_adc" if role == "adc" else "vs_sup"
-    enemy_matchups = db.get("counter", {}).get(enemy, {}).get(candidate_key_for_enemy, {})
+    enemy_lane = "bottom" if enemy in db["tiers"].get("bottom", {}) else "support"
+    candidate_lane = meta["lane"]
 
     results = []
-    for champ, tier in db["tiers"].get(meta["lane"], {}).items():
+    for champ, tier in db["tiers"].get(candidate_lane, {}).items():
         if tier == "?":
             continue
-        forward_stat = extract_stat(
-            db.get("counter", {}).get(champ, {}).get(enemy_key_for_candidate, {}).get(enemy),
-            legacy_games=LEGACY_RELATION_GAMES,
-        )
-        reverse_stat = extract_stat(enemy_matchups.get(champ), legacy_games=0)
-
-        evidence = []
-        if forward_stat["winrate"] is not None and forward_stat["games"] > 0:
-            evidence.append(
-                {
-                    "win_rate": forward_stat["winrate"] * 100,
-                    "games": int(forward_stat["games"]),
-                    "weight": math.sqrt(forward_stat["games"]),
-                }
-            )
-        if reverse_stat["winrate"] is not None and reverse_stat["games"] > 0:
-            evidence.append(
-                {
-                    "win_rate": (1 - reverse_stat["winrate"]) * 100,
-                    "games": int(reverse_stat["games"]),
-                    "weight": math.sqrt(reverse_stat["games"]),
-                }
-            )
-        if not evidence:
+        matchup = compute_matchup(db, candidate_lane, enemy_lane, champ, enemy)
+        if matchup["fused_win_rate"] is None:
             continue
 
-        total_weight = sum(item["weight"] for item in evidence)
-        win_rate = sum(item["win_rate"] * item["weight"] for item in evidence) / total_weight
-        total_games = sum(item["games"] for item in evidence)
-        forward_win_rate = (
-            forward_stat["winrate"] * 100
-            if forward_stat["winrate"] is not None and forward_stat["games"] > 0
-            else None
-        )
-        reverse_win_rate = (
-            (1 - reverse_stat["winrate"]) * 100
-            if reverse_stat["winrate"] is not None and reverse_stat["games"] > 0
-            else None
-        )
-        consistency_gap = (
-            abs(forward_win_rate - reverse_win_rate)
-            if forward_win_rate is not None and reverse_win_rate is not None
-            else None
-        )
+        win_rate = matchup["fused_win_rate"]
+        forward_win_rate = matchup["forward_win_rate"]
+        reverse_win_rate = matchup["reverse_win_rate"]
+        consistency_gap = matchup["consistency_gap"]
+        total_games = matchup["effective_games"]
+
         confidence_level = confidence_from_games(total_games)
         if consistency_gap is None:
             data_note = "单向数据参考"
@@ -1505,7 +1617,7 @@ def find_counter_picks(enemy, role, db, top_n=5):
             data_note = "双向数据分歧较大"
 
         consistency_penalty = max(0.0, (consistency_gap or 0.0) - 2.0) * 0.25
-        single_side_penalty = 2.5 if len(evidence) < 2 else 0.0
+        single_side_penalty = 2.5 if matchup["n_sides"] < 2 else 0.0
         sample_bonus = min(1.5, math.sqrt(total_games / 3000) * 1.5)
         counter_index = win_rate + sample_bonus - consistency_penalty - single_side_penalty
         results.append(
@@ -1519,11 +1631,11 @@ def find_counter_picks(enemy, role, db, top_n=5):
                 "forward_win_rate": (
                     round(forward_win_rate, 2) if forward_win_rate is not None else None
                 ),
-                "forward_games": int(forward_stat["games"]),
+                "forward_games": matchup["forward_games"],
                 "reverse_win_rate": (
                     round(reverse_win_rate, 2) if reverse_win_rate is not None else None
                 ),
-                "reverse_games": int(reverse_stat["games"]),
+                "reverse_games": matchup["reverse_games"],
                 "games": int(total_games),
                 "consistency_gap": (
                     round(consistency_gap, 2) if consistency_gap is not None else None

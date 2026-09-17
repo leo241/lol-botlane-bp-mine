@@ -8,8 +8,11 @@ app.py - LoL 下路 BP 助手 API 服务
 
 主要接口:
   GET  /api/health
-  GET  /api/champions
+  GET  /api/champions          # 下路/辅助 英雄池
+  GET  /api/champions/all      # 全部英雄（名单设置界面用）
   POST /api/recommend
+  GET  /api/mylists            # 4 份个人名单
+  POST /api/mylists            # 增删改名单（add / remove / set / remove_unknown）
   GET  /api/counter/<champion>
   GET  /api/lcu/state        # 客户端实时状态（只读，供自动填充使用）
   POST /api/lcu/config       # 开关自动识别
@@ -40,7 +43,16 @@ from bp_engine import (
     run_recommend,
 )
 from champion_aliases import CHAMPION_ALIASES
-from my_lists import LIST_FILES, LIST_LABELS, get_lists, update_list
+from my_lists import (
+    LIST_FILES,
+    LIST_LABELS,
+    LIST_OPPOSITE,
+    LIST_ROLES,
+    get_lists,
+    remove_unknown_line,
+    save_list,
+    update_list,
+)
 from scraper.chinese_getchampion.hero_id_mapping import HERO_ID_MAPPING
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -374,7 +386,10 @@ def build_mylists_payload():
             )
         payload["lists"][key] = {
             "label": LIST_LABELS[key],
+            "role": LIST_ROLES.get(key, ""),
+            "opposite": LIST_OPPOSITE.get(key, ""),
             "file": entry["file"],
+            "rel_file": os.path.relpath(entry["file"], BASE_DIR).replace("\\", "/"),
             "champions": champions,
             "unknown": entry["unknown"],
         }
@@ -456,8 +471,32 @@ def mylists_update():
 
     if list_key not in LIST_FILES:
         return api_error("list 必须是 " + "、".join(LIST_FILES))
-    if action not in ("add", "remove"):
-        return api_error("action 必须是 add 或 remove")
+    if action not in ("add", "remove", "set", "remove_unknown"):
+        return api_error("action 必须是 add / remove / set / remove_unknown")
+
+    # set：整体覆盖一份名单（传空数组即清空），champions 里可以是 中文名/别名/英文key/数字ID
+    if action == "set":
+        champions = payload.get("champions", [])
+        if champions is None:
+            champions = []
+        if not isinstance(champions, list):
+            return api_error("champions 必须是数组")
+        try:
+            save_list(list_key, [str(item) for item in champions])
+        except ValueError as exc:
+            return api_error(str(exc))
+        return jsonify(build_mylists_payload())
+
+    # remove_unknown：删掉文件里一行识别不了的内容
+    if action == "remove_unknown":
+        if not champion:
+            return api_error("champion 不能为空")
+        try:
+            remove_unknown_line(list_key, champion)
+        except ValueError as exc:
+            return api_error(str(exc))
+        return jsonify(build_mylists_payload())
+
     if not champion:
         return api_error("champion 不能为空")
 
@@ -466,6 +505,37 @@ def mylists_update():
     except ValueError as exc:
         return api_error(str(exc))
     return jsonify(build_mylists_payload())
+
+
+@app.get("/api/champions/all")
+def all_champions():
+    """全部英雄（含非下路/辅助英雄），供名单设置界面点选。"""
+    meta = get_champion_meta()
+    if lazy_pinyin:
+        def sort_key(item):
+            return "".join(lazy_pinyin(item["cn_name"] or item["name"]))
+    else:
+        def sort_key(item):
+            return item["cn_name"] or item["name"]
+    champions = sorted(meta.values(), key=sort_key)
+    return jsonify(
+        {
+            "ok": True,
+            "champions": [
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "cn_name": item["cn_name"],
+                    "aliases": item["aliases"],
+                    "champion_id": item["champion_id"],
+                    "avatar": item["avatar"],
+                    "search_tokens": item["search_tokens"],
+                    "search_text": item["search_text"],
+                }
+                for item in champions
+            ],
+        }
+    )
 
 
 @app.get("/api/lcu/state")

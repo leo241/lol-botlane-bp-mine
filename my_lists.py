@@ -20,6 +20,9 @@ my_lists.py - 个人自定义名单（不推荐 / 经常使用）
 写错的行不会导致报错，只会在 /api/mylists 的 unknown 里提示，方便排查。
 
 改完名单文件立即生效，不需要重启服务。
+
+除了用记事本改，网页上的「名单设置」按钮也能可视化编辑这 4 个文件：
+勾选/搜索英雄即可增删，改动会立刻写回对应的 txt。
 """
 
 import os
@@ -45,7 +48,23 @@ LIST_LABELS = {
     "support_fav": "辅助 经常使用名单",
 }
 
-_lock = threading.Lock()
+# 每个名单属于哪个分路（前端用来做冲突提示/默认打开）
+LIST_ROLES = {
+    "adc_block": "adc",
+    "adc_fav": "adc",
+    "support_block": "support",
+    "support_fav": "support",
+}
+
+# 同一个分路里的另一份名单（常用 <-> 不推荐），用来提示"两边都写了"
+LIST_OPPOSITE = {
+    "adc_block": "adc_fav",
+    "adc_fav": "adc_block",
+    "support_block": "support_fav",
+    "support_fav": "support_block",
+}
+
+_lock = threading.RLock()
 _cache = {"stamp": None, "data": None}
 
 
@@ -63,6 +82,37 @@ def _build_name_index():
 
 
 _NAME_INDEX = _build_name_index()
+
+_CN_NAMES = None
+
+
+def _load_cn_names():
+    """英雄小写key -> 中文名（和页面上显示的保持一致），读不到就返回空字符串"""
+    global _CN_NAMES
+    if _CN_NAMES is not None:
+        return _CN_NAMES
+    names = []
+    path = os.path.join(BASE_DIR, "scraper", "chinese_getchampion", "英雄名字.txt")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as file:
+            names = [line.strip() for line in file if line.strip()]
+    mapping = {}
+    for index, key in enumerate(HERO_ID_MAPPING):
+        if index < len(names):
+            mapping[key] = names[index]
+    _CN_NAMES = mapping
+    return mapping
+
+
+def display_name(champion_id):
+    """写回文件时用的名字：优先中文名，其次常用别名，最后是英文 key"""
+    candidates = [_load_cn_names().get(champion_id)]
+    candidates.extend(CHAMPION_ALIASES.get(champion_id, []))
+    for candidate in candidates:
+        # 只有确认这个名字能被反查回同一个英雄，才写进文件
+        if candidate and resolve_name(candidate) == champion_id:
+            return candidate
+    return champion_id
 
 
 def resolve_name(raw):
@@ -136,31 +186,124 @@ def update_list(list_key, champion_name, add=True):
     path = os.path.join(LISTS_DIR, LIST_FILES[list_key])
     os.makedirs(LISTS_DIR, exist_ok=True)
 
-    lines = []
-    if os.path.exists(path):
+    with _lock:
+        lines = []
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as file:
+                lines = file.readlines()
+
+        kept = []
+        removed = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and resolve_name(stripped) == champion_id:
+                removed = True
+                continue
+            kept.append(line)
+
+        if add:
+            if kept and not kept[-1].endswith("\n"):
+                kept[-1] += "\n"
+            kept.append(display_name(champion_id) + "\n")
+        elif not removed:
+            # 本来就不在名单里，不动文件
+            get_lists(force=True)
+            return champion_id
+
+        with open(path, "w", encoding="utf-8") as file:
+            file.writelines(kept)
+
+        get_lists(force=True)
+    return champion_id
+
+
+def _split_file_lines(lines):
+    """把文件拆成 注释行 / 已识别行(id -> 原始写法) / 未识别行"""
+    comments = []
+    raw_by_id = {}
+    unknown = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            comments.append(line if line.endswith("\n") else line + "\n")
+            continue
+        champion_id = resolve_name(stripped)
+        if champion_id is None:
+            unknown.append(line if line.endswith("\n") else line + "\n")
+        elif champion_id not in raw_by_id:
+            raw_by_id[champion_id] = stripped
+    return comments, raw_by_id, unknown
+
+
+def save_list(list_key, champion_ids):
+    """整体覆盖一份名单（顺序即传入顺序）。
+
+    保留文件里的注释、未识别行，以及老条目的原始写法（用户手打的中文名不会被改成英文 key）。
+    """
+    if list_key not in LIST_FILES:
+        raise ValueError(f"未知名单: {list_key}")
+    path = os.path.join(LISTS_DIR, LIST_FILES[list_key])
+    os.makedirs(LISTS_DIR, exist_ok=True)
+
+    with _lock:
+        lines = []
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as file:
+                lines = file.readlines()
+
+        comments, raw_by_id, unknown = _split_file_lines(lines)
+
+        output = list(comments)
+        seen = set()
+        for raw in champion_ids:
+            champion_id = resolve_name(raw)
+            if champion_id is None or champion_id in seen:
+                continue
+            seen.add(champion_id)
+            output.append((raw_by_id.get(champion_id) or display_name(champion_id)) + "\n")
+        output.extend(unknown)
+
+        with open(path, "w", encoding="utf-8") as file:
+            file.writelines(output)
+
+        get_lists(force=True)
+    return sorted(seen)
+
+
+def remove_unknown_line(list_key, raw):
+    """删掉一行识别不了的内容（比如手打错的英雄名）"""
+    if list_key not in LIST_FILES:
+        raise ValueError(f"未知名单: {list_key}")
+    target = str(raw or "").strip()
+    if not target:
+        raise ValueError("raw 不能为空")
+    path = os.path.join(LISTS_DIR, LIST_FILES[list_key])
+    if not os.path.exists(path):
+        return False
+
+    with _lock:
         with open(path, "r", encoding="utf-8") as file:
             lines = file.readlines()
 
-    kept = []
-    removed = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#") and resolve_name(stripped) == champion_id:
-            removed = True
-            continue
-        kept.append(line)
+        kept = []
+        removed = False
+        for line in lines:
+            stripped = line.strip()
+            if (
+                not removed
+                and stripped
+                and not stripped.startswith("#")
+                and stripped == target
+                and resolve_name(stripped) is None
+            ):
+                removed = True
+                continue
+            kept.append(line)
 
-    if add:
-        if kept and not kept[-1].endswith("\n"):
-            kept[-1] += "\n"
-        kept.append(champion_id + "\n")
-    elif not removed:
-        # 本来就不在名单里，不动文件
-        get_lists(force=True)
-        return champion_id
-
-    with open(path, "w", encoding="utf-8") as file:
-        file.writelines(kept)
-
-    get_lists(force=True)
-    return champion_id
+        if removed:
+            with open(path, "w", encoding="utf-8") as file:
+                file.writelines(kept)
+            get_lists(force=True)
+    return removed
