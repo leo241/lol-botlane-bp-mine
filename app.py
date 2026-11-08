@@ -21,6 +21,7 @@ app.py - LoL 下路 BP 助手 API 服务
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -55,11 +56,23 @@ from my_lists import (
 )
 from scraper.chinese_getchampion.hero_id_mapping import HERO_ID_MAPPING
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_dir():
+    # 打包成 exe 后所有资源统一放在 exe 旁的 lolbp_utils/ 下；开发模式用项目根目录。
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "lolbp_utils")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 DB_PATH = os.path.join(BASE_DIR, "data", "botlane_dataset.json")
 CN_NAMES_PATH = os.path.join(BASE_DIR, "scraper", "chinese_getchampion", "英雄名字.txt")
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+    static_url_path="/static",
+)
 DB = None
 CHAMPION_META = None
 
@@ -384,12 +397,18 @@ def build_mylists_payload():
                     "avatar": info.get("avatar"),
                 }
             )
+        # relpath 在跨盘符（exe 在 E 盘、解包目录在 C 盘）时会抛 ValueError，
+        # 不能因为一个展示用字段让整个名单接口 500（前端会因此解析到 HTML 而整页空白）。
+        try:
+            rel_file = os.path.relpath(entry["file"], BASE_DIR).replace("\\", "/")
+        except (ValueError, OSError):
+            rel_file = os.path.basename(entry["file"])
         payload["lists"][key] = {
             "label": LIST_LABELS[key],
             "role": LIST_ROLES.get(key, ""),
             "opposite": LIST_OPPOSITE.get(key, ""),
             "file": entry["file"],
-            "rel_file": os.path.relpath(entry["file"], BASE_DIR).replace("\\", "/"),
+            "rel_file": rel_file,
             "champions": champions,
             "unknown": entry["unknown"],
         }
@@ -718,9 +737,15 @@ def _run_update(with_timeline=False):
           percent=2, logs=[], label="正在启动...",
           started_at=time.strftime("%H:%M:%S"), finished_at=None)
 
-    args = [sys.executable, "-u", "update_data.py"]
-    if with_timeline:
-        args.append("--with-timeline")
+    if getattr(sys, "frozen", False):
+        # 冻结态：子进程就是 exe 自己，带隐藏参数跑更新流水线（见 launcher._run_internal_update）
+        args = [sys.executable, "--_internal_update"]
+        if with_timeline:
+            args.append("--with-timeline")
+    else:
+        args = [sys.executable, "-u", "update_data.py"]
+        if with_timeline:
+            args.append("--with-timeline")
     # PYTHONUNBUFFERED= 让输出不缓冲，进度才能实时读到；
     # PYTHONIOENCODING=utf-8 很关键：从 bat/cmd 启动时子进程继承 GBK 代码页，
     # pre_fetch 标题里的 🚀 编不出来会直接 UnicodeEncodeError 崩掉（退出码 1）。
@@ -809,6 +834,170 @@ def data_update_status():
         }
     snapshot["ok"] = True
     return jsonify(snapshot)
+
+
+# ────────────────────── 历史版本（回切） ──────────────────────
+#
+# 每次更新都会把数据按版本号快照到 data/versions/，并维护 manifest.json。
+# 这里提供「列出版本」和「回切到某版本」两个接口，让网页在抓到新版本、
+# 但样本还不置信时，能切回旧版本的数据继续用。
+
+VERSIONS_DIR = os.path.join(BASE_DIR, "data", "versions")
+MANIFEST_PATH = os.path.join(VERSIONS_DIR, "manifest.json")
+
+
+def _backup_current_data():
+    """切换版本前，先把当前实时数据备份一份，方便随时切回。"""
+    backup_dir = os.path.join(BASE_DIR, "data", "backups")
+    if not os.path.exists(DB_PATH):
+        return
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    shutil.copy2(DB_PATH, os.path.join(backup_dir, f"botlane_dataset.{stamp}.json"))
+
+
+def _safe_slug(version):
+    return "".join(c if (c.isalnum() or c in "._-") else "_" for c in str(version)) or "unknown"
+
+
+def _read_meta_version(path):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            meta = json.load(file).get("meta", {})
+        return (
+            meta.get("version") or None,
+            meta.get("update_time") or None,
+            meta.get("version_source") or "",
+        )
+    except Exception:
+        return None, None, ""
+
+
+def ensure_versions():
+    """首次访问时，把现有的「实时数据 + 旧备份」登记进版本清单。
+
+    保证即使还没跑过带快照的新更新，也能看到当前数据和一个可回切的入口。
+    """
+    if os.path.exists(MANIFEST_PATH):
+        return
+    manifest = {"active": None, "versions": []}
+    seen = set()
+
+    def upsert(version, update_time, source, file_rel):
+        if not version or version in seen:
+            return
+        seen.add(version)
+        manifest["versions"].append({
+            "version": version,
+            "update_time": update_time or "-",
+            "source": source,
+            "file": file_rel,
+        })
+
+    # 1) 实时数据（当前生效的）
+    if os.path.exists(DB_PATH):
+        version, update_time, source = _read_meta_version(DB_PATH)
+        upsert(version or f"snapshot-{update_time or 'current'}",
+               update_time, source or "实时数据", "data/botlane_dataset.json")
+        manifest["active"] = version or f"snapshot-{update_time or 'current'}"
+
+    # 2) 旧备份（按时间戳存的那些）
+    backup_dir = os.path.join(BASE_DIR, "data", "backups")
+    if os.path.isdir(backup_dir):
+        for name in sorted(os.listdir(backup_dir)):
+            if not name.startswith("botlane_dataset") or not name.endswith(".json"):
+                continue
+            stamp = name[len("botlane_dataset."):-len(".json")]
+            path = os.path.join(backup_dir, name)
+            version, update_time, source = _read_meta_version(path)
+            upsert(version or f"backup-{stamp}", update_time,
+                   source or "历史备份", os.path.relpath(path, BASE_DIR).replace("\\", "/"))
+
+    manifest["versions"].sort(key=lambda item: item.get("update_time", ""), reverse=True)
+    save_manifest(manifest)
+
+
+def load_manifest():
+    ensure_versions()
+    try:
+        with open(MANIFEST_PATH, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return {"active": None, "versions": []}
+
+
+def save_manifest(manifest):
+    os.makedirs(VERSIONS_DIR, exist_ok=True)
+    with open(MANIFEST_PATH, "w", encoding="utf-8") as file:
+        json.dump(manifest, file, ensure_ascii=False, indent=2)
+
+
+@app.get("/api/data/versions")
+def data_versions():
+    """列出所有可用版本（含当前生效版本标记）。"""
+    manifest = load_manifest()
+    db = get_db()
+    current_version = (db.get("meta") or {}).get("version")
+    return jsonify({
+        "ok": True,
+        "active": manifest.get("active"),
+        "current_version": current_version,
+        "versions": manifest.get("versions", []),
+    })
+
+
+@app.post("/api/data/switch")
+def data_switch():
+    """回切到某个历史版本：把对应快照原子替换成实时数据，触发自动重载。"""
+    with UPDATE_LOCK:
+        if UPDATE_STATE["running"]:
+            return api_error("数据正在更新中，请更新完成后再切换", status_code=409)
+    payload = request.get_json(silent=True) or {}
+    target = str(payload.get("version", "")).strip()
+    if not target:
+        return api_error("version 不能为空")
+
+    manifest = load_manifest()
+    entry = next(
+        (item for item in manifest.get("versions", []) if item.get("version") == target),
+        None,
+    )
+    if not entry:
+        return api_error(f"找不到版本 {target}")
+
+    src = os.path.join(BASE_DIR, entry["file"])
+    if not os.path.exists(src):
+        return api_error(f"版本 {target} 的快照文件已丢失：{entry['file']}")
+
+    # 先备份当前实时数据（万一想切回来），再原子替换
+    _backup_current_data()
+    tmp = DB_PATH + ".switch.tmp"
+    try:
+        shutil.copyfile(src, tmp)
+        for attempt in range(10):
+            try:
+                os.replace(tmp, DB_PATH)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
+    except Exception as exc:
+        return api_error(f"切换失败：{exc}")
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    manifest["active"] = target
+    save_manifest(manifest)
+    # 让下次请求重新加载数据集
+    global DB
+    DB = None
+    version = (get_db().get("meta") or {}).get("version")
+    return jsonify({"ok": True, "version": version, "update_time": (get_db().get("meta") or {}).get("update_time")})
 
 
 @app.get("/")

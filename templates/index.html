@@ -1202,6 +1202,34 @@
       outline-offset: -2px;
       background: rgba(255, 184, 0, 0.10);
     }
+    /* ==== 预选英雄：保留在列表中、轻高亮，不再"消失" ==== */
+    tr.preset-row > td {
+      background: rgba(64, 120, 242, 0.10);
+    }
+    tr.preset-row > td:first-child {
+      box-shadow: inset 3px 0 0 var(--accent, #4078f2);
+      font-weight: 800;
+      color: var(--accent, #4078f2);
+    }
+    .preset-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 6px;
+      padding: 0 7px;
+      min-height: 18px;
+      border-radius: 999px;
+      background: var(--accent, #4078f2);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      vertical-align: middle;
+    }
+    .preset-card {
+      outline: 2px solid var(--accent, #4078f2);
+      outline-offset: -2px;
+      background: rgba(64, 120, 242, 0.08);
+    }
     /* ==== 客户端自动识别 ==== */
     .lcu-bar {
       display: flex;
@@ -1380,6 +1408,15 @@
       <div class="metric wide"><span>BP 状态</span><strong id="state">-</strong><p id="state_desc">-</p></div>
       <div class="metric"><span>返回推荐</span><strong id="total">-</strong></div>
       <div class="metric"><span>高可信</span><strong id="high_count">-</strong></div>
+      <div class="metric">
+        <span>数据版本</span>
+        <div class="update-row">
+          <strong id="data_version">-</strong>
+          <select id="version_select" class="muted-control" title="切换历史版本数据（新版本样本不置信时可切回旧版）" hidden>
+            <option value="">加载中…</option>
+          </select>
+        </div>
+      </div>
       <div class="metric">
         <span>数据更新时间</span>
         <div class="update-row">
@@ -1623,6 +1660,8 @@
     const counterInput = document.querySelector("#counter_champion");
     const tierLane = document.querySelector("#tier_lane");
     const updateTimeEl = document.querySelector("#update_time");
+    const dataVersionEl = document.querySelector("#data_version");
+    const versionSelect = document.querySelector("#version_select");
     const updateBtn = document.querySelector("#update_data_btn");
     const updateProgress = document.querySelector("#update_progress");
     const updateBar = document.querySelector("#update_bar");
@@ -1633,6 +1672,7 @@
       total: document.querySelector("#total"),
       high: document.querySelector("#high_count"),
       update: updateTimeEl,
+      version: dataVersionEl,
     };
 
     // ── 客户端自动识别 ──
@@ -1902,6 +1942,7 @@
     let allChampions = [];
     let latestRows = [];
     let latestPreciseRows = [];
+    let latestPreselectedId = null;
     let latestSynergyRows = [];
     let excludedChampionIds = new Set();
     let pendingTimer = null;
@@ -1956,8 +1997,15 @@
     }
 
     async function loadMyLists() {
-      const res = await fetch("/api/mylists");
-      applyMyListsData(await res.json());
+      // 名单只是辅助功能，任何失败都不能阻断主流程（否则 recommend() 不执行 → 整页空白）
+      try {
+        const res = await fetch("/api/mylists");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        applyMyListsData(data);
+      } catch (error) {
+        statusEl.textContent = `名单加载失败（不影响推荐）：${error.message}`;
+      }
     }
 
     async function persistMyList(listKey, action, championId) {
@@ -2318,17 +2366,20 @@
       const synTiers = columnTiers(rows, "synergy_calibrated_score", "duo_games");
       const cntTiers = columnTiers(rows, "counter_calibrated_score", "matchup_games");
       currentScoreTiers = {synergy: synTiers, counter: cntTiers};
+
       rows.forEach((row, index) => {
         const tr = document.createElement("tr");
         const isFav = isFavoriteChampion(row.name);
+        const isPre = row.name === latestPreselectedId;
         if (isFav) tr.className = "favorite-row";
+        if (isPre) tr.classList.add("preset-row");
         tr.dataset.champion = row.name;
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>
             <div class="champ">
               <img src="${row.avatar}" alt="">
-              <span><span class="fav-toggle ${isFav ? "active" : ""}" title="${isFav ? "移出" : "加入"}经常使用名单">★</span>${row.display_name}${isFav ? '<span class="fav-badge">常用</span>' : ""}<small>${row.english_name}</small></span>
+              <span><span class="fav-toggle ${isFav ? "active" : ""}" title="${isFav ? "移出" : "加入"}经常使用名单">★</span>${row.display_name}${isFav ? '<span class="fav-badge">常用</span>' : ""}${isPre ? '<span class="preset-badge">已预选</span>' : ""}<small>${row.english_name}</small></span>
             </div>
           </td>
           <td><span class="badge">${row.tier}</span></td>
@@ -2360,7 +2411,9 @@
         card.type = "button";
         card.dataset.champion = row.name;
         const isFav = isFavoriteChampion(row.name);
+        const isPre = row.name === latestPreselectedId;
         if (isFav) card.classList.add("favorite");
+        if (isPre) card.classList.add("preset-card");
         const groups = row.precision_tag_groups || {};
         const comboTags = groups.combo || row.combo_tags || [];
         const heroTags = groups.hero || row.hero_tags || [];
@@ -2371,7 +2424,7 @@
         card.innerHTML = `
           <div class="champ">
             <img src="${row.avatar}" alt="">
-            <span><span class="fav-toggle ${isFav ? "active" : ""}" title="${isFav ? "移出" : "加入"}经常使用名单">★</span>${index + 1}. ${row.display_name}${isFav ? '<span class="fav-badge">常用</span>' : ""}<small>${row.english_name}</small></span>
+            <span><span class="fav-toggle ${isFav ? "active" : ""}" title="${isFav ? "移出" : "加入"}经常使用名单">★</span>${index + 1}. ${row.display_name}${isFav ? '<span class="fav-badge">常用</span>' : ""}${isPre ? '<span class="preset-badge">已预选</span>' : ""}<small>${row.english_name}</small></span>
           </div>
           <div><span class="badge">${row.tier}</span> 推荐指数 ${row.display_winrate.toFixed(1)}</div>
           <div class="precise-scores">
@@ -2802,13 +2855,19 @@
     function applyRecommendData(data, fromCache = false) {
       latestRows = data.results || [];
       latestPreciseRows = data.precise_results || latestRows.slice(0, 7);
+      latestPreselectedId = data.preselected?.id || null;
       metrics.state.textContent = data.state_info?.label || data.state || "-";
       metrics.stateDesc.textContent = data.state_info?.description || "-";
       metrics.total.textContent = String(data.summary?.total ?? latestRows.length);
       metrics.high.textContent = String(data.summary?.confidence_counts?.high ?? 0);
       renderRows();
       const cached = fromCache ? "（已缓存）" : "";
-      statusEl.textContent = `已排除已选英雄：${(data.excluded_champions || []).join(", ") || "无"}${cached}`;
+      if (latestPreselectedId) {
+        const pre = data.preselected;
+        statusEl.textContent = `已预选 ${pre.id}（${pre.slot_label}）：保留在列表里按真实排名高亮，可看其梯队/排位${cached}`;
+      } else {
+        statusEl.textContent = `就绪${cached}`;
+      }
     }
 
     function handleSearchKeydown(event, input, lane, onSelect, onEnter) {
@@ -2842,6 +2901,7 @@
       fillDatalist("#support_list", data.support);
       fillDatalist("#all_champion_list", [...data.bottom, ...data.support]);
       metrics.update.textContent = data.data_meta.update_time || "-";
+      metrics.version.textContent = data.data_meta.version || "未知";
       statusEl.textContent = "英雄列表已加载";
       // 名单设置要用全量英雄（含非下路/辅助的英雄），加载失败也不影响主流程
       try {
@@ -2851,7 +2911,73 @@
       } catch (error) {
         allChampions = [];
       }
+      // 历史版本清单（版本号展示 + 回切）
+      loadVersions();
     }
+
+    async function loadVersions() {
+      try {
+        const res = await fetch("/api/data/versions");
+        const data = await res.json();
+        if (!data.ok) return;
+        const versions = data.versions || [];
+        const current = data.current_version || metrics.version.textContent;
+        versionSelect.innerHTML = "";
+        if (!versions.length) {
+          versionSelect.hidden = true;
+          return;
+        }
+        versionSelect.hidden = false;
+        versions.forEach((v) => {
+          const option = document.createElement("option");
+          option.value = v.version;
+          const note = v.source ? `（${v.source}）` : "";
+          option.textContent = `${v.version} · ${v.update_time}${note}`;
+          if (v.version === current || v.version === data.active) {
+            option.selected = true;
+          }
+          versionSelect.appendChild(option);
+        });
+        metrics.version.textContent = current || (versions[0] && versions[0].version) || "未知";
+      } catch (error) {
+        versionSelect.hidden = true;
+      }
+    }
+
+    let switchingVersion = false;
+    versionSelect.addEventListener("change", async () => {
+      const target = versionSelect.value;
+      if (!target || switchingVersion) return;
+      switchingVersion = true;
+      const prevDisabled = recommendButton.disabled;
+      recommendButton.disabled = true;
+      statusEl.textContent = `正在切换到版本 ${target}...`;
+      try {
+        const res = await fetch("/api/data/switch", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({version: target}),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          statusEl.textContent = `切换失败：${data.error || "未知错误"}`;
+          loadVersions();
+          return;
+        }
+        metrics.version.textContent = data.version || target;
+        metrics.update.textContent = data.update_time || metrics.update.textContent;
+        // 数据集已替换，重新加载英雄池与推荐
+        recommendCache.clear();
+        await loadChampions();
+        scheduleRecommend();
+        statusEl.textContent = `已切换到版本 ${data.version || target}`;
+      } catch (error) {
+        statusEl.textContent = "切换版本失败，请稍后再试。";
+      } finally {
+        switchingVersion = false;
+        recommendButton.disabled = prevDisabled;
+      }
+    });
 
     async function recommend() {
       const payload = buildRecommendPayload();
@@ -3136,6 +3262,8 @@
       updateBtn.textContent = status.ok ? "更新数据" : "重试更新";
       if (status.ok) {
         recommend();   // 新数据生效，顺带刷新更新时间
+        loadVersions(); // 刷新版本清单与当前版本号（新版本样本不置信时可回切）
+        loadChampions(); // 重新加载英雄池，确保梯队/胜率同步到前端
       } else if (status.error) {
         updatePhase.textContent = status.error;
       }

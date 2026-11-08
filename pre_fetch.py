@@ -8,6 +8,7 @@ import glob
 import argparse
 import json, os, time, sys
 import concurrent.futures
+import urllib.request
 import scraper.lolalytics as la
 import scraper.lolalytics_timeline as timeline
 from scraper.champion_map import get_all
@@ -313,7 +314,28 @@ def legacy_fetch_matrix():
     return synergy_db, counter_db, fetch_errors
 
 
-def main():
+def detect_current_patch(timeout=10):
+    """从 Riot 官方 ddragon 版本接口拿当前最新游戏版本（如 16.22.1）。
+
+    这是「当前版本」最可靠的来源；Lolalytics 默认抓的也是当前版本，
+    所以用它来给本地数据打版本号，方便界面展示与历史版本回切。
+    失败时返回 None（调用方退化为占位版本）。
+    """
+    try:
+        req = urllib.request.Request(
+            "https://ddragon.leagueoflegends.com/api/versions.json",
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            versions = json.loads(resp.read().decode("utf-8"))
+        if versions and isinstance(versions, list):
+            return str(versions[0])
+    except Exception:
+        pass
+    return None
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--with-timeline",
@@ -331,10 +353,26 @@ def main():
         action="store_true",
         help="使用有界面浏览器抓取时间趋势，便于手动通过 Cloudflare。",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--patch",
+        default=None,
+        help="手动指定数据对应的游戏版本号（如 16.22.1）。不传则自动从 ddragon 探测当前版本。",
+    )
+    args = parser.parse_args(argv)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     start_time = time.time()
+
+    # 版本号：优先用手动 --patch，否则自动探测当前版本，再不行退化为占位
+    version = args.patch
+    version_source = "manual"
+    if not version:
+        version = detect_current_patch()
+        version_source = "ddragon(自动探测)"
+    if not version:
+        version = "unknown"
+        version_source = "未识别"
+    print(f"数据版本号: {version}（来源：{version_source}）")
 
     print("=" * 50)
     print(" 🚀 LoL 下路 BP 数据预热工具 (双位置版)")
@@ -371,6 +409,8 @@ def main():
         "meta": {
             "update_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "source": "Lolalytics (KR Emerald+, current patch)",
+            "version": version,
+            "version_source": version_source,
             "coverage": coverage,
             "fetch_errors_count": len(fetch_errors),
             "fetch_errors": fetch_errors[:100],

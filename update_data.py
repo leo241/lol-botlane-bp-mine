@@ -24,9 +24,21 @@ import subprocess
 import sys
 import time
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)
+
+
+def _resolve_base_dir():
+    # 冻结态（exe）：资源统一放在 exe 旁的 lolbp_utils/；开发态用脚本所在目录。
+    if FROZEN:
+        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "lolbp_utils")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 DATA_PATH = os.path.join(BASE_DIR, "data", "botlane_dataset.json")
 BACKUP_DIR = os.path.join(BASE_DIR, "data", "backups")
+VERSIONS_DIR = os.path.join(BASE_DIR, "data", "versions")
+MANIFEST_PATH = os.path.join(VERSIONS_DIR, "manifest.json")
 MIN_BOTTOM_CHAMPIONS = 25
 MIN_SUPPORT_CHAMPIONS = 35
 MIN_HERO_STATS_RATIO = 0.9
@@ -153,22 +165,96 @@ def restore_backup(backup_path):
 
 
 def run_api_tests():
-    run_command([sys.executable, "test_api.py"])
+    if FROZEN:
+        # 冻结态没有独立的 test_api.py 可跑，直接在本进程内执行冒烟测试
+        import test_api
+        test_api.main()
+    else:
+        run_command([sys.executable, "test_api.py"])
+
+
+def _safe_slug(version):
+    """把版本号转成安全的文件名片段（保留字母数字和 . _ -）。"""
+    return "".join(c if (c.isalnum() or c in "._-") else "_" for c in str(version)) or "unknown"
+
+
+def load_manifest():
+    if os.path.exists(MANIFEST_PATH):
+        try:
+            with open(MANIFEST_PATH, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            if isinstance(data, dict) and "versions" in data:
+                return data
+        except Exception:
+            pass
+    return {"active": None, "versions": []}
+
+
+def save_manifest(manifest):
+    os.makedirs(VERSIONS_DIR, exist_ok=True)
+    with open(MANIFEST_PATH, "w", encoding="utf-8") as file:
+        json.dump(manifest, file, ensure_ascii=False, indent=2)
+
+
+def snapshot_version():
+    """把刚写好的 data/botlane_dataset.json 按版本号快照到 data/versions/ 并更新 manifest。
+
+    这样每次更新都会保留一份带版本号的完整数据，界面就能回切到旧版本。
+    """
+    if not os.path.exists(DATA_PATH):
+        return
+    with open(DATA_PATH, "r", encoding="utf-8") as file:
+        meta = json.load(file).get("meta", {})
+    version = meta.get("version") or "unknown"
+    update_time = meta.get("update_time") or time.strftime("%Y-%m-%d %H:%M:%S")
+    source = meta.get("version_source", "")
+    os.makedirs(VERSIONS_DIR, exist_ok=True)
+    dest = os.path.join(VERSIONS_DIR, f"botlane_dataset_{_safe_slug(version)}.json")
+    shutil.copy2(DATA_PATH, dest)
+
+    manifest = load_manifest()
+    versions = manifest.get("versions", [])
+    # 同一版本号只保留最新一次（按 update_time 去重）
+    versions = [entry for entry in versions if entry.get("version") != version]
+    versions.append({
+        "version": version,
+        "update_time": update_time,
+        "file": os.path.relpath(dest, BASE_DIR).replace("\\", "/"),
+        "source": source,
+    })
+    versions.sort(key=lambda entry: entry.get("update_time", ""), reverse=True)
+    manifest["versions"] = versions
+    manifest["active"] = version
+    save_manifest(manifest)
+    print(f"已保存版本快照: {version} -> {dest}")
 
 
 def update_data(with_timeline=False, timeline_limit=None, timeline_headed=False):
     backup_path = backup_dataset()
     try:
-        args = [sys.executable, "pre_fetch.py"]
-        if with_timeline:
-            args.append("--with-timeline")
-        if timeline_limit is not None:
-            args.extend(["--timeline-limit", str(timeline_limit)])
-        if timeline_headed:
-            args.append("--timeline-headed")
-        run_command(args)
+        if FROZEN:
+            # 冻结态没有独立的 pre_fetch.py 可跑，直接在本进程内执行抓取流程
+            import pre_fetch
+            argv = []
+            if with_timeline:
+                argv.append("--with-timeline")
+            if timeline_limit is not None:
+                argv.extend(["--timeline-limit", str(timeline_limit)])
+            if timeline_headed:
+                argv.append("--timeline-headed")
+            pre_fetch.main(argv)
+        else:
+            args = [sys.executable, "pre_fetch.py"]
+            if with_timeline:
+                args.append("--with-timeline")
+            if timeline_limit is not None:
+                args.extend(["--timeline-limit", str(timeline_limit)])
+            if timeline_headed:
+                args.append("--timeline-headed")
+            run_command(args)
         validate_dataset()
         run_api_tests()
+        snapshot_version()
     except Exception:
         print("\n更新失败，准备恢复旧数据。")
         restore_backup(backup_path)

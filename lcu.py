@@ -27,6 +27,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 
@@ -301,7 +302,14 @@ def _load_role_sets():
         return _ROLE_CACHE
 
     raw = {"bottom": {}, "support": {}}
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 冻结态读 exe 旁 lolbp_utils/ 里用户那份数据（点"更新数据"后会变），
+    # 而不是 exe 内部打包的旧副本；开发态用脚本所在目录。
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.join(
+            os.path.dirname(os.path.abspath(sys.executable)), "lolbp_utils"
+        )
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(base_dir, "data", "botlane_dataset.json")
     try:
         with open(path, "r", encoding="utf-8") as file:
@@ -540,7 +548,10 @@ def parse_session(session, id_to_key=None):
         elif pick["position"] == "support" and not ally["support"]:
             ally["support"] = pick["key"]
 
-    # 我方还没锁定的话，用预选（悬停）补一下
+    # 我方位置是 LCU 公开信息（assignedPosition），下路是谁一目了然。
+    # 只按「明确位置」填槽位，绝不再用 score_lanes 对队友做"像不像辅助"的推断 ——
+    # 否则上单/中单悬停一个偏辅助的英雄时，会被误塞进己方辅助槽。
+    # 非下路位置（上单 / 中单 / 打野等）的悬停一律忽略，绝不填进下路槽位。
     for intent in my_intents:
         key = intent["key"]
         if not key:
@@ -550,12 +561,6 @@ def parse_session(session, id_to_key=None):
             ally["adc"] = key
         elif position == "support" and not ally["support"]:
             ally["support"] = key
-        else:
-            adc_score, sup_score = score_lanes(key)
-            if adc_score > sup_score and not ally["adc"]:
-                ally["adc"] = key
-            elif sup_score > adc_score and not ally["support"]:
-                ally["support"] = key
 
     # ── 敌方：位置隐藏，靠英雄推断 ──
     enemy_inferred = infer_botlane_roles(enemy_picks)

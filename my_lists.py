@@ -26,12 +26,23 @@ my_lists.py - 个人自定义名单（不推荐 / 经常使用）
 """
 
 import os
+import sys
 import threading
 
 from champion_aliases import CHAMPION_ALIASES
 from scraper.chinese_getchampion.hero_id_mapping import HERO_ID_MAPPING
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _resolve_base_dir():
+    # 打包成 exe 后所有资源统一放在 exe 旁的 lolbp_utils/ 下；开发模式用项目根目录。
+    # 必须和 app.py 的 BASE_DIR 保持一致，否则 os.path.relpath 跨盘会抛 ValueError，
+    # 而且用户编辑的 lolbp_utils/data/lists 名单也不会生效（读成了 exe 内部只读副本）。
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "lolbp_utils")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _resolve_base_dir()
 LISTS_DIR = os.path.join(BASE_DIR, "data", "lists")
 
 LIST_FILES = {

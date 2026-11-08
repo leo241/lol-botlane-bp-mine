@@ -1412,6 +1412,33 @@ def run_recommend(role, bp_state, db, top_n=None):
         value for value in bp_state.values() if value is not None
     }
 
+    # 用户在自己位置上"预选"的那个英雄（己方 ADC/辅助槽），要留在主推荐列表里
+    # 按真实排名参与排序，只做轻微高亮，方便用户看到它的梯队与排第几。
+    # 因此它从排除集合里拿掉，不退出候选；被排除的只剩下敌方 + 另一路已选（本就不能选）。
+    my_role_slot = "ally_ad" if role == "adc" else "ally_sup"
+    preselected = bp_state.get(my_role_slot)
+    if preselected:
+        selected_champions.discard(preselected)
+
+    # 仅返回用户自己预选的那一个（用于前端在主列表内高亮），不再把已选英雄拎到顶部分区。
+    preselected_info = None
+    if preselected:
+        lane = meta["lane"]
+        tier = db["tiers"].get(lane, {}).get(preselected)
+        if tier == "?":
+            tier = None
+        stat = extract_stat(
+            db.get("hero_stats", {}).get(lane, {}).get(preselected), legacy_games=0
+        )
+        preselected_info = {
+            "slot": my_role_slot,
+            "slot_label": "己方 ADC" if role == "adc" else "己方辅助",
+            "id": preselected,
+            "tier": tier,
+            "win_rate": round(stat["winrate"] * 100, 2) if stat["winrate"] else 0,
+            "games": int(stat["games"]),
+        }
+
     candidates = {}
     for champ, tier_label in db["tiers"].get(meta["lane"], {}).items():
         if tier_label == "?":
@@ -1567,6 +1594,7 @@ def run_recommend(role, bp_state, db, top_n=None):
         "ally": ally,
         "enemies": enemies,
         "excluded_champions": sorted(selected_champions),
+        "preselected": preselected_info,
         "weights": round_weights(component_weights),
         "score_model": "pure_residual_context_v4",
         "results": results,
